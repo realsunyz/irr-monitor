@@ -1,4 +1,4 @@
-package monitor
+package state
 
 import (
 	"encoding/json"
@@ -13,7 +13,7 @@ type State struct {
 	mu       sync.RWMutex
 }
 
-func NewState(filepath string) *State {
+func New(filepath string) *State {
 	return &State{
 		Serials:  make(map[string]int64),
 		filepath: filepath,
@@ -38,15 +38,14 @@ func (s *State) Load() error {
 		return err
 	}
 
-	return json.Unmarshal(data, s)
+	return json.Unmarshal(data, &s.Serials)
 }
 
-// Save saves state to file atomically
 func (s *State) Save() error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	data, err := json.MarshalIndent(s, "", "  ")
+	data, err := json.MarshalIndent(s.Serials, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -74,7 +73,6 @@ func (s *State) SetSerial(source string, serial int64) {
 func (s *State) UpdateSerial(source string, serial int64) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	if serial > s.Serials[source] {
 		s.Serials[source] = serial
 		return true

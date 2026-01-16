@@ -11,16 +11,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/realSunyz/irr-monitor/pkg/apnic"
-	"github.com/realSunyz/irr-monitor/pkg/monitor"
-	"github.com/realSunyz/irr-monitor/pkg/nrtm"
-	"github.com/realSunyz/irr-monitor/pkg/telegram"
+	"github.com/realSunyz/irr-monitor/internal/apnic"
+	"github.com/realSunyz/irr-monitor/internal/ripe"
+	"github.com/realSunyz/irr-monitor/internal/state"
+	"github.com/realSunyz/irr-monitor/internal/telegram"
 )
 
 type Config struct {
 	TelegramToken string
 	Channels      []any
-	RIRs          []string
 	PollInterval  time.Duration
 	StateFile     string
 }
@@ -29,10 +28,7 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.Println("Starting IRR Monitor...")
 
-	config, err := loadConfig()
-	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
-	}
+	config := loadConfig()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -45,36 +41,37 @@ func main() {
 		cancel()
 	}()
 
-	tgBot, err := telegram.NewBot(config.TelegramToken, config.Channels)
+	bot, err := telegram.NewBot(config.TelegramToken, config.Channels)
 	if err != nil {
 		log.Fatalf("Failed to create Telegram bot: %v", err)
 	}
-	tgBot.Start(ctx)
+	bot.Start(ctx)
 	log.Println("Telegram bot initialized")
 
-	state := monitor.NewState(config.StateFile)
-	if err := state.Load(); err != nil {
-		log.Printf("Warning: Failed to load state: %v (starting fresh)", err)
+	st := state.New(config.StateFile)
+	if err := st.Load(); err != nil {
+		log.Printf("Warning: Failed to load state: %v", err)
 	}
 
-	callback := func(source string, autNum *nrtm.AutNum) {
-		if err := tgBot.NotifyNewASN(ctx, source, autNum); err != nil {
+	callback := func(source string, autNum *telegram.AutNum) {
+		if err := bot.NotifyNewASN(ctx, source, autNum); err != nil {
 			log.Printf("Error sending notification: %v", err)
 		}
 	}
 
 	dataDir := filepath.Dir(config.StateFile)
+
 	apnicMonitor := apnic.NewMonitor(dataDir, callback)
 	go apnicMonitor.Start(ctx)
 
-	asnMonitor := monitor.NewASNMonitor(config.RIRs, state, config.PollInterval, callback)
+	ripeMonitor := ripe.NewMonitor(st, config.PollInterval, callback)
 	log.Printf("Starting RIPE ASN monitoring, poll interval: %s", config.PollInterval)
-	asnMonitor.Start(ctx)
+	ripeMonitor.Start(ctx)
 
 	log.Println("IRR Monitor stopped")
 }
 
-func loadConfig() (*Config, error) {
+func loadConfig() *Config {
 	config := &Config{
 		TelegramToken: os.Getenv("TELEGRAM_BOT_TOKEN"),
 		StateFile:     getEnvOrDefault("STATE_FILE", "/data/state.json"),
@@ -84,8 +81,8 @@ func loadConfig() (*Config, error) {
 	if channelsStr == "" {
 		log.Fatal("TELEGRAM_CHANNELS environment variable is required")
 	}
-	channelParts := strings.Split(channelsStr, ",")
-	for _, ch := range channelParts {
+
+	for _, ch := range strings.Split(channelsStr, ",") {
 		ch = strings.TrimSpace(ch)
 		if ch == "" {
 			continue
@@ -93,12 +90,9 @@ func loadConfig() (*Config, error) {
 		if strings.HasPrefix(ch, "@") {
 			config.Channels = append(config.Channels, ch)
 		} else {
-			id, err := strconv.ParseInt(ch, 10, 64)
-			if err != nil {
-				log.Printf("Warning: Invalid channel '%s': %v", ch, err)
-				continue
+			if id, err := strconv.ParseInt(ch, 10, 64); err == nil {
+				config.Channels = append(config.Channels, id)
 			}
-			config.Channels = append(config.Channels, id)
 		}
 	}
 
@@ -106,18 +100,9 @@ func loadConfig() (*Config, error) {
 		log.Fatal("No valid channels provided")
 	}
 
-	rirsStr := getEnvOrDefault("MONITOR_RIRS", "APNIC,RIPE")
-	rirParts := strings.Split(rirsStr, ",")
-	for _, rir := range rirParts {
-		rir = strings.TrimSpace(strings.ToUpper(rir))
-		if rir != "" {
-			config.RIRs = append(config.RIRs, rir)
-		}
-	}
-
 	pollIntervalStr := getEnvOrDefault("POLL_INTERVAL", "60")
-	pollIntervalSec, err := strconv.Atoi(pollIntervalStr)
-	if err != nil {
+	pollIntervalSec, _ := strconv.Atoi(pollIntervalStr)
+	if pollIntervalSec <= 0 {
 		pollIntervalSec = 60
 	}
 	config.PollInterval = time.Duration(pollIntervalSec) * time.Second
@@ -126,7 +111,7 @@ func loadConfig() (*Config, error) {
 		log.Fatal("TELEGRAM_BOT_TOKEN environment variable is required")
 	}
 
-	return config, nil
+	return config
 }
 
 func getEnvOrDefault(key, defaultValue string) string {

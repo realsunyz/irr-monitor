@@ -9,8 +9,15 @@ import (
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
-	"github.com/realSunyz/irr-monitor/pkg/nrtm"
 )
+
+type AutNum struct {
+	ASN     string
+	AsName  string
+	Descr   string
+	Country string
+	Source  string
+}
 
 type Bot struct {
 	bot      *bot.Bot
@@ -24,7 +31,7 @@ func NewBot(token string, channels []any) (*Bot, error) {
 
 	b, err := bot.New(token, opts...)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create bot: %w", err)
+		return nil, fmt.Errorf("failed to create bot: %w", err)
 	}
 
 	return &Bot{
@@ -85,7 +92,7 @@ func (b *Bot) Start(ctx context.Context) {
 	log.Println("Telegram bot started")
 }
 
-func (b *Bot) NotifyNewASN(ctx context.Context, source string, autNum *nrtm.AutNum) error {
+func (b *Bot) NotifyNewASN(ctx context.Context, source string, autNum *AutNum) error {
 	message := formatASNMessage(source, autNum)
 
 	var lastErr error
@@ -104,7 +111,7 @@ func (b *Bot) NotifyNewASN(ctx context.Context, source string, autNum *nrtm.AutN
 	return lastErr
 }
 
-func formatASNMessage(source string, autNum *nrtm.AutNum) string {
+func formatASNMessage(source string, autNum *AutNum) string {
 	var sb strings.Builder
 
 	sb.WriteString("<b>New ASN Allocation</b>\n\n")

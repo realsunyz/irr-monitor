@@ -29,6 +29,5 @@ VOLUME ["/data"]
 
 ENV STATE_FILE=/data/state.json
 ENV POLL_INTERVAL=60
-ENV MONITOR_RIRS=APNIC,RIPE
 
 CMD ["./irr-monitor"]
