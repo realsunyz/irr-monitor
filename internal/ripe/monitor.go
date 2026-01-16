@@ -162,29 +162,28 @@ func (m *Monitor) poll() {
 			continue
 		}
 
-		// Check if truly new: created == last-modified
 		if autNum.Created != "" && autNum.LastModified != "" {
 			if autNum.Created != autNum.LastModified {
-				// created < last-modified means it's a modification, not new
 				continue
 			}
 		}
 
-		// Lookup org's country
+		var orgName, orgCountry string
 		if autNum.Org != "" {
-			if country := m.queryOrgCountry(autNum.Org); country != "" {
-				autNum.Country = country
-			}
+			orgName, orgCountry = m.queryOrgInfo(autNum.Org)
 		}
 
 		log.Printf("RIPE Monitor: New ASN: %s (%s)", autNum.ASN, autNum.AsName)
 
 		tgAutNum := &telegram.AutNum{
-			ASN:     autNum.ASN,
-			AsName:  autNum.AsName,
-			Descr:   autNum.Descr,
-			Country: autNum.Country,
-			Source:  Source,
+			ASN:        autNum.ASN,
+			AsName:     autNum.AsName,
+			Descr:      autNum.Descr,
+			Country:    autNum.Country,
+			Org:        autNum.Org,
+			OrgName:    orgName,
+			OrgCountry: orgCountry,
+			Source:     Source,
 		}
 
 		if m.callback != nil {
@@ -385,10 +384,10 @@ func (m *Monitor) parseAutNum(obj *RPSLObject) *AutNum {
 	}
 }
 
-func (m *Monitor) queryOrgCountry(orgID string) string {
+func (m *Monitor) queryOrgInfo(orgID string) (orgName, country string) {
 	conn, err := net.DialTimeout("tcp", "whois.ripe.net:43", 10*time.Second)
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	defer conn.Close()
 
@@ -400,10 +399,12 @@ func (m *Monitor) queryOrgCountry(orgID string) string {
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.HasPrefix(line, "country:") {
-			return strings.TrimSpace(strings.TrimPrefix(line, "country:"))
+		if strings.HasPrefix(line, "org-name:") && orgName == "" {
+			orgName = strings.TrimSpace(strings.TrimPrefix(line, "org-name:"))
+		} else if strings.HasPrefix(line, "country:") && country == "" {
+			country = strings.TrimSpace(strings.TrimPrefix(line, "country:"))
 		}
 	}
 
-	return ""
+	return orgName, country
 }

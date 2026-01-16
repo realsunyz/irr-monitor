@@ -256,17 +256,52 @@ func (m *Monitor) queryASNInfo(asn string) *telegram.AutNum {
 	conn.Write([]byte(asn + "\n"))
 
 	info := &telegram.AutNum{ASN: asn, Source: "APNIC"}
+	var org string
+
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.HasPrefix(line, "as-name:") {
+		if strings.HasPrefix(line, "as-name:") && info.AsName == "" {
 			info.AsName = strings.TrimSpace(strings.TrimPrefix(line, "as-name:"))
 		} else if strings.HasPrefix(line, "descr:") && info.Descr == "" {
 			info.Descr = strings.TrimSpace(strings.TrimPrefix(line, "descr:"))
 		} else if strings.HasPrefix(line, "country:") && info.Country == "" {
 			info.Country = strings.TrimSpace(strings.TrimPrefix(line, "country:"))
+		} else if strings.HasPrefix(line, "org:") && org == "" {
+			org = strings.TrimSpace(strings.TrimPrefix(line, "org:"))
 		}
 	}
 
+	// Query org info if org is found
+	if org != "" {
+		info.Org = org
+		orgName, orgCountry := m.queryOrgInfo(org)
+		info.OrgName = orgName
+		info.OrgCountry = orgCountry
+	}
+
 	return info
+}
+
+func (m *Monitor) queryOrgInfo(orgID string) (orgName, country string) {
+	conn, err := net.DialTimeout("tcp", "whois.apnic.net:43", 10*time.Second)
+	if err != nil {
+		return "", ""
+	}
+	defer conn.Close()
+
+	conn.SetDeadline(time.Now().Add(10 * time.Second))
+	conn.Write([]byte(orgID + "\n"))
+
+	scanner := bufio.NewScanner(conn)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "org-name:") && orgName == "" {
+			orgName = strings.TrimSpace(strings.TrimPrefix(line, "org-name:"))
+		} else if strings.HasPrefix(line, "country:") && country == "" {
+			country = strings.TrimSpace(strings.TrimPrefix(line, "country:"))
+		}
+	}
+
+	return orgName, country
 }

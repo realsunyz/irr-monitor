@@ -12,11 +12,14 @@ import (
 )
 
 type AutNum struct {
-	ASN     string
-	AsName  string
-	Descr   string
-	Country string
-	Source  string
+	ASN        string
+	AsName     string
+	Descr      string
+	Country    string
+	Org        string
+	OrgName    string
+	OrgCountry string
+	Source     string
 }
 
 type Bot struct {
@@ -46,34 +49,28 @@ func defaultHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	}
 
 	if update.Message.Text == "/status" {
-		ripeSerial, ripeLastCheck, ripeLastASN, apnicCount, apnicLastCheck, apnicFile, apnicLastASN := Status.GetStatus()
+		ripeSerial, ripeLastCheck, _, apnicCount, apnicLastCheck, apnicFile, _ := Status.GetStatus()
 
 		var sb strings.Builder
-		sb.WriteString("📊 <b>IRR Monitor Status</b>\n\n")
+		sb.WriteString("<b>IRR Monitor Status</b>\n\n")
 
 		sb.WriteString("<b>🇪🇺 RIPE (NRTM)</b>\n")
 		if ripeSerial > 0 {
-			sb.WriteString(fmt.Sprintf("  Serial: %d\n", ripeSerial))
-			sb.WriteString(fmt.Sprintf("  Last Check: %s\n", formatTimeAgo(ripeLastCheck)))
-			if ripeLastASN != "" {
-				sb.WriteString(fmt.Sprintf("  Last ASN: %s\n", ripeLastASN))
-			}
+			sb.WriteString(fmt.Sprintf("    Serial: %d\n", ripeSerial))
+			sb.WriteString(fmt.Sprintf("    Last Check: %s\n", formatTimeAgo(ripeLastCheck)))
 		} else {
-			sb.WriteString("  Not initialized\n")
+			sb.WriteString("    Not Initialized\n")
 		}
 
 		sb.WriteString("\n<b>🌏 APNIC (Delegated)</b>\n")
 		if apnicCount > 0 {
-			sb.WriteString(fmt.Sprintf("  Total ASNs: %d\n", apnicCount))
-			sb.WriteString(fmt.Sprintf("  Last Check: %s\n", formatTimeAgo(apnicLastCheck)))
+			sb.WriteString(fmt.Sprintf("    Total ASNs: %d\n", apnicCount))
+			sb.WriteString(fmt.Sprintf("    Last Check: %s\n", formatTimeAgo(apnicLastCheck)))
 			if apnicFile != "" {
-				sb.WriteString(fmt.Sprintf("  File: %s\n", apnicFile))
-			}
-			if apnicLastASN != "" {
-				sb.WriteString(fmt.Sprintf("  Last ASN: %s\n", apnicLastASN))
+				sb.WriteString(fmt.Sprintf("    File: %s\n", apnicFile))
 			}
 		} else {
-			sb.WriteString("  Not initialized\n")
+			sb.WriteString("    Not Initialized\n")
 		}
 
 		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
@@ -114,23 +111,38 @@ func (b *Bot) NotifyNewASN(ctx context.Context, source string, autNum *AutNum) e
 func formatASNMessage(source string, autNum *AutNum) string {
 	var sb strings.Builder
 
-	sb.WriteString("<b>New ASN Allocation</b>\n\n")
-	sb.WriteString(fmt.Sprintf("<b>ASN:</b> %s\n", autNum.ASN))
-
-	if autNum.AsName != "" {
-		sb.WriteString(fmt.Sprintf("<b>Name:</b> %s\n", escapeHTML(autNum.AsName)))
-	}
-
-	if autNum.Descr != "" {
-		sb.WriteString(fmt.Sprintf("<b>Description:</b> %s\n", escapeHTML(autNum.Descr)))
-	}
+	sb.WriteString(fmt.Sprintf("<b>New %s ASN Allocation</b>\n\n", source))
+	sb.WriteString(fmt.Sprintf("<b>aut-num:</b> %s\n", autNum.ASN))
+	sb.WriteString(fmt.Sprintf("<b>as-name:</b> %s\n", escapeHTML(autNum.AsName)))
 
 	if autNum.Country != "" {
-		sb.WriteString(fmt.Sprintf("<b>Country:</b> %s\n", autNum.Country))
+		sb.WriteString(fmt.Sprintf("<b>country:</b> %s\n", autNum.Country))
 	}
 
-	sb.WriteString(fmt.Sprintf("<b>Source:</b> %s\n", source))
-	sb.WriteString(fmt.Sprintf("\n#%s", source))
+	if autNum.Org != "" || autNum.OrgName != "" {
+		sb.WriteString("\n")
+		if autNum.Org != "" {
+			sb.WriteString(fmt.Sprintf("<b>organization:</b> %s\n", autNum.Org))
+		}
+		if autNum.OrgName != "" {
+			sb.WriteString(fmt.Sprintf("<b>org-name:</b> %s\n", escapeHTML(autNum.OrgName)))
+		}
+		if autNum.OrgCountry != "" {
+			sb.WriteString(fmt.Sprintf("<b>country:</b> %s\n", autNum.OrgCountry))
+		}
+	}
+
+	asnNum := strings.TrimPrefix(autNum.ASN, "AS")
+
+	sb.WriteString("\n")
+	if source == "RIPE" {
+		sb.WriteString(fmt.Sprintf("<a href=\"https://apps.db.ripe.net/db-web-ui/lookup?source=ripe&amp;key=%s&amp;type=aut-num\">RIPE DB</a>", autNum.ASN))
+	} else {
+		sb.WriteString(fmt.Sprintf("<a href=\"https://wq.apnic.net/static/search.html?query=%s\">APNIC DB</a>", autNum.ASN))
+	}
+	sb.WriteString(fmt.Sprintf(" | <a href=\"https://bgp.tools/as/%s\">BGP.TOOLS</a>", asnNum))
+
+	sb.WriteString(fmt.Sprintf("\n\n#%s", source))
 
 	return sb.String()
 }
