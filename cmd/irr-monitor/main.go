@@ -5,11 +5,13 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/realSunyz/irr-monitor/pkg/apnic"
 	"github.com/realSunyz/irr-monitor/pkg/monitor"
 	"github.com/realSunyz/irr-monitor/pkg/nrtm"
 	"github.com/realSunyz/irr-monitor/pkg/telegram"
@@ -61,10 +63,12 @@ func main() {
 		}
 	}
 
-	asnMonitor := monitor.NewASNMonitor(config.RIRs, state, config.PollInterval, callback)
+	dataDir := filepath.Dir(config.StateFile)
+	apnicMonitor := apnic.NewMonitor(dataDir, callback)
+	go apnicMonitor.Start(ctx)
 
-	log.Printf("Starting ASN monitoring for: %s", strings.Join(config.RIRs, ", "))
-	log.Printf("Poll interval: %s", config.PollInterval)
+	asnMonitor := monitor.NewASNMonitor(config.RIRs, state, config.PollInterval, callback)
+	log.Printf("Starting RIPE ASN monitoring, poll interval: %s", config.PollInterval)
 	asnMonitor.Start(ctx)
 
 	log.Println("IRR Monitor stopped")
