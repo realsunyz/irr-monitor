@@ -135,6 +135,13 @@ func (m *ASNMonitor) pollRIR(rir string, client *nrtm.Client) {
 			continue
 		}
 
+		// For RIPE, lookup org's country instead of aut-num's country
+		if rir == "RIPE" && autNum.Org != "" {
+			if orgCountry, err := nrtm.QueryOrgCountry(autNum.Org); err == nil && orgCountry != "" {
+				autNum.Country = orgCountry
+			}
+		}
+
 		newASNCount++
 		log.Printf("New ASN allocation from %s: %s (%s)", rir, autNum.ASN, autNum.AsName)
 

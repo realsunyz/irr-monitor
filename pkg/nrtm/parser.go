@@ -16,6 +16,7 @@ type AutNum struct {
 	Descr   string
 	Country string
 	Source  string
+	Org     string
 	OrgName string
 	Status  string
 }
@@ -95,6 +96,7 @@ func (o *RPSLObject) ToAutNum() *AutNum {
 		Descr:   o.Attributes["descr"],
 		Country: o.Attributes["country"],
 		Source:  o.Attributes["source"],
+		Org:     o.Attributes["org"],
 		OrgName: o.Attributes["org-name"],
 		Status:  o.Attributes["status"],
 	}

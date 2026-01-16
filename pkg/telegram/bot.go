@@ -88,29 +88,23 @@ func (b *Bot) NotifyNewASN(ctx context.Context, source string, autNum *nrtm.AutN
 func formatASNMessage(source string, autNum *nrtm.AutNum) string {
 	var sb strings.Builder
 
-	sb.WriteString("🆕 *New ASN Allocation*\n\n")
-	sb.WriteString(fmt.Sprintf("📋 *Source:* `%s`\n", source))
-	sb.WriteString(fmt.Sprintf("🔢 *ASN:* `%s`\n", autNum.ASN))
+	sb.WriteString("*New ASN Allocation*\n\n")
+	sb.WriteString(fmt.Sprintf("*ASN:* %s\n", autNum.ASN))
 
 	if autNum.AsName != "" {
-		sb.WriteString(fmt.Sprintf("📛 *Name:* %s\n", escapeMarkdown(autNum.AsName)))
+		sb.WriteString(fmt.Sprintf("*Name:* %s\n", escapeMarkdown(autNum.AsName)))
 	}
 
 	if autNum.Descr != "" {
-		sb.WriteString(fmt.Sprintf("📝 *Description:* %s\n", escapeMarkdown(autNum.Descr)))
+		sb.WriteString(fmt.Sprintf("*Description:* %s\n", escapeMarkdown(autNum.Descr)))
 	}
 
 	if autNum.Country != "" {
-		sb.WriteString(fmt.Sprintf("🌍 *Country:* %s\n", autNum.Country))
+		sb.WriteString(fmt.Sprintf("*Country:* %s\n", autNum.Country))
 	}
 
-	if autNum.OrgName != "" {
-		sb.WriteString(fmt.Sprintf("🏢 *Organization:* %s\n", escapeMarkdown(autNum.OrgName)))
-	}
-
-	if autNum.Status != "" {
-		sb.WriteString(fmt.Sprintf("📊 *Status:* %s\n", autNum.Status))
-	}
+	sb.WriteString(fmt.Sprintf("*Source:* %s\n", source))
+	sb.WriteString(fmt.Sprintf("\n#%s", source))
 
 	return sb.String()
 }
