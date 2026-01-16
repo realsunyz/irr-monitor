@@ -3,9 +3,11 @@ package apnic
 import (
 	"context"
 	"log"
+	"path/filepath"
 	"time"
 
 	"github.com/realSunyz/irr-monitor/pkg/nrtm"
+	"github.com/realSunyz/irr-monitor/pkg/telegram"
 )
 
 type ASNCallback func(source string, autNum *nrtm.AutNum)
@@ -32,6 +34,7 @@ func (m *Monitor) Start(ctx context.Context) {
 	if data != nil {
 		m.previousData = data
 		log.Printf("APNIC Monitor: Loaded %d ASNs from %s", len(data.ASNs), data.FilePath)
+		telegram.Status.UpdateAPNIC(len(data.ASNs), filepath.Base(data.FilePath), "")
 	} else {
 		log.Println("APNIC Monitor: No existing data, fetching fresh...")
 		newData, err := FetchAndSaveDelegatedData(m.dataDir)
@@ -40,6 +43,7 @@ func (m *Monitor) Start(ctx context.Context) {
 		} else {
 			m.previousData = newData
 			log.Printf("APNIC Monitor: Saved %d ASNs to %s", len(newData.ASNs), newData.FilePath)
+			telegram.Status.UpdateAPNIC(len(newData.ASNs), filepath.Base(newData.FilePath), "")
 		}
 	}
 

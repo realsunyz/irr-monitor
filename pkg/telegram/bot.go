@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -37,26 +38,44 @@ func defaultHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 		return
 	}
 
-	if update.Message.Text == "/start" {
-		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID:    update.Message.Chat.ID,
-			Text:      "🔍 *IRR Monitor Bot*\n\nI will notify you about new ASN allocations from APNIC and RIPE.\n\nThis chat ID: `" + fmt.Sprintf("%d", update.Message.Chat.ID) + "`",
-			ParseMode: models.ParseModeMarkdown,
-		})
-		if err != nil {
-			log.Printf("Error sending start message: %v", err)
-		}
-		return
-	}
+	if update.Message.Text == "/status" {
+		ripeSerial, ripeLastCheck, ripeLastASN, apnicCount, apnicLastCheck, apnicFile, apnicLastASN := Status.GetStatus()
 
-	if strings.HasPrefix(update.Message.Text, "/chatid") {
+		var sb strings.Builder
+		sb.WriteString("📊 <b>IRR Monitor Status</b>\n\n")
+
+		sb.WriteString("<b>🇪🇺 RIPE (NRTM)</b>\n")
+		if ripeSerial > 0 {
+			sb.WriteString(fmt.Sprintf("  Serial: %d\n", ripeSerial))
+			sb.WriteString(fmt.Sprintf("  Last Check: %s\n", formatTimeAgo(ripeLastCheck)))
+			if ripeLastASN != "" {
+				sb.WriteString(fmt.Sprintf("  Last ASN: %s\n", ripeLastASN))
+			}
+		} else {
+			sb.WriteString("  Not initialized\n")
+		}
+
+		sb.WriteString("\n<b>🌏 APNIC (Delegated)</b>\n")
+		if apnicCount > 0 {
+			sb.WriteString(fmt.Sprintf("  Total ASNs: %d\n", apnicCount))
+			sb.WriteString(fmt.Sprintf("  Last Check: %s\n", formatTimeAgo(apnicLastCheck)))
+			if apnicFile != "" {
+				sb.WriteString(fmt.Sprintf("  File: %s\n", apnicFile))
+			}
+			if apnicLastASN != "" {
+				sb.WriteString(fmt.Sprintf("  Last ASN: %s\n", apnicLastASN))
+			}
+		} else {
+			sb.WriteString("  Not initialized\n")
+		}
+
 		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:    update.Message.Chat.ID,
-			Text:      fmt.Sprintf("Your chat ID is: `%d`", update.Message.Chat.ID),
-			ParseMode: models.ParseModeMarkdown,
+			Text:      sb.String(),
+			ParseMode: models.ParseModeHTML,
 		})
 		if err != nil {
-			log.Printf("Error sending chat ID: %v", err)
+			log.Printf("Error sending status message: %v", err)
 		}
 	}
 }
@@ -116,4 +135,21 @@ func escapeHTML(s string) string {
 		">", "&gt;",
 	)
 	return replacer.Replace(s)
+}
+
+func formatTimeAgo(t time.Time) string {
+	if t.IsZero() {
+		return "Never"
+	}
+	d := time.Since(t)
+	if d < time.Minute {
+		return "Just now"
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%d min ago", int(d.Minutes()))
+	}
+	if d < 24*time.Hour {
+		return fmt.Sprintf("%d hours ago", int(d.Hours()))
+	}
+	return t.Format("2006-01-02 15:04")
 }

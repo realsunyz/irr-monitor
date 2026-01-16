@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/realSunyz/irr-monitor/pkg/nrtm"
+	"github.com/realSunyz/irr-monitor/pkg/telegram"
 )
 
 type ASNCallback func(source string, autNum *nrtm.AutNum)
@@ -160,6 +161,7 @@ func (m *ASNMonitor) pollRIR(rir string, client *nrtm.Client) {
 
 	if maxSerial > 0 {
 		m.state.UpdateSerial(rir, maxSerial)
+		telegram.Status.UpdateRIPE(maxSerial, "")
 		if err := m.state.Save(); err != nil {
 			log.Printf("Warning: Failed to save state: %v", err)
 		}
