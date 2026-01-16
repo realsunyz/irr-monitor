@@ -74,7 +74,7 @@ func (b *Bot) NotifyNewASN(ctx context.Context, source string, autNum *nrtm.AutN
 		_, err := b.bot.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:    channel,
 			Text:      message,
-			ParseMode: models.ParseModeMarkdown,
+			ParseMode: models.ParseModeHTML,
 		})
 		if err != nil {
 			log.Printf("Error sending message to channel %v: %v", channel, err)
@@ -88,47 +88,32 @@ func (b *Bot) NotifyNewASN(ctx context.Context, source string, autNum *nrtm.AutN
 func formatASNMessage(source string, autNum *nrtm.AutNum) string {
 	var sb strings.Builder
 
-	sb.WriteString("*New ASN Allocation*\n\n")
-	sb.WriteString(fmt.Sprintf("*ASN:* %s\n", autNum.ASN))
+	sb.WriteString("<b>New ASN Allocation</b>\n\n")
+	sb.WriteString(fmt.Sprintf("<b>ASN:</b> %s\n", autNum.ASN))
 
 	if autNum.AsName != "" {
-		sb.WriteString(fmt.Sprintf("*Name:* %s\n", escapeMarkdown(autNum.AsName)))
+		sb.WriteString(fmt.Sprintf("<b>Name:</b> %s\n", escapeHTML(autNum.AsName)))
 	}
 
 	if autNum.Descr != "" {
-		sb.WriteString(fmt.Sprintf("*Description:* %s\n", escapeMarkdown(autNum.Descr)))
+		sb.WriteString(fmt.Sprintf("<b>Description:</b> %s\n", escapeHTML(autNum.Descr)))
 	}
 
 	if autNum.Country != "" {
-		sb.WriteString(fmt.Sprintf("*Country:* %s\n", autNum.Country))
+		sb.WriteString(fmt.Sprintf("<b>Country:</b> %s\n", autNum.Country))
 	}
 
-	sb.WriteString(fmt.Sprintf("*Source:* %s\n", source))
+	sb.WriteString(fmt.Sprintf("<b>Source:</b> %s\n", source))
 	sb.WriteString(fmt.Sprintf("\n#%s", source))
 
 	return sb.String()
 }
 
-func escapeMarkdown(s string) string {
+func escapeHTML(s string) string {
 	replacer := strings.NewReplacer(
-		"_", "\\_",
-		"*", "\\*",
-		"[", "\\[",
-		"]", "\\]",
-		"(", "\\(",
-		")", "\\)",
-		"~", "\\~",
-		"`", "\\`",
-		">", "\\>",
-		"#", "\\#",
-		"+", "\\+",
-		"-", "\\-",
-		"=", "\\=",
-		"|", "\\|",
-		"{", "\\{",
-		"}", "\\}",
-		".", "\\.",
-		"!", "\\!",
+		"&", "&amp;",
+		"<", "&lt;",
+		">", "&gt;",
 	)
 	return replacer.Replace(s)
 }
