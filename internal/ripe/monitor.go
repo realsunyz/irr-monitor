@@ -25,12 +25,13 @@ const (
 )
 
 type AutNum struct {
-	ASN     string
-	AsName  string
-	Descr   string
-	Country string
-	Org     string
-	Created string
+	ASN          string
+	AsName       string
+	Descr        string
+	Country      string
+	Org          string
+	Created      string
+	LastModified string
 }
 
 type Update struct {
@@ -161,12 +162,11 @@ func (m *Monitor) poll() {
 			continue
 		}
 
-		// Check if truly new (created within 24h)
-		if autNum.Created != "" {
-			if createdTime, err := time.Parse("2006-01-02T15:04:05Z", autNum.Created); err == nil {
-				if time.Since(createdTime) > 24*time.Hour {
-					continue
-				}
+		// Check if truly new: created == last-modified
+		if autNum.Created != "" && autNum.LastModified != "" {
+			if autNum.Created != autNum.LastModified {
+				// created < last-modified means it's a modification, not new
+				continue
 			}
 		}
 
@@ -375,12 +375,13 @@ func (m *Monitor) parseRPSLObject(text string) *RPSLObject {
 
 func (m *Monitor) parseAutNum(obj *RPSLObject) *AutNum {
 	return &AutNum{
-		ASN:     obj.Attributes["aut-num"],
-		AsName:  obj.Attributes["as-name"],
-		Descr:   obj.Attributes["descr"],
-		Country: obj.Attributes["country"],
-		Org:     obj.Attributes["org"],
-		Created: obj.Attributes["created"],
+		ASN:          obj.Attributes["aut-num"],
+		AsName:       obj.Attributes["as-name"],
+		Descr:        obj.Attributes["descr"],
+		Country:      obj.Attributes["country"],
+		Org:          obj.Attributes["org"],
+		Created:      obj.Attributes["created"],
+		LastModified: obj.Attributes["last-modified"],
 	}
 }
 
