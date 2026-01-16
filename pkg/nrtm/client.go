@@ -28,13 +28,6 @@ func DefaultRIRConfigs() map[string]RIRConfig {
 			Source:    "RIPE",
 			SerialURL: "https://ftp.ripe.net/ripe/dbase/RIPE.CURRENTSERIAL",
 		},
-		"APNIC": {
-			Name:      "APNIC",
-			Host:      "whois.apnic.net",
-			Port:      43,
-			Source:    "APNIC",
-			SerialURL: "https://ftp.apnic.net/apnic/whois/APNIC.CURRENTSERIAL",
-		},
 	}
 }
 
