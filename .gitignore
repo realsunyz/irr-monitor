@@ -1,0 +1,22 @@
+# Binaries
+irr-monitor
+*.exe
+
+# Environment files with secrets
+.env
+
+# State files
+state.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go
+vendor/

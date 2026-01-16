@@ -1,0 +1,140 @@
+package telegram
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"strings"
+
+	"github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
+	"github.com/realSunyz/irr-monitor/pkg/nrtm"
+)
+
+type Bot struct {
+	bot      *bot.Bot
+	channels []any
+}
+
+func NewBot(token string, channels []any) (*Bot, error) {
+	opts := []bot.Option{
+		bot.WithDefaultHandler(defaultHandler),
+	}
+
+	b, err := bot.New(token, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to create bot: %w", err)
+	}
+
+	return &Bot{
+		bot:      b,
+		channels: channels,
+	}, nil
+}
+
+func defaultHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	if update.Message == nil {
+		return
+	}
+
+	if update.Message.Text == "/start" {
+		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:    update.Message.Chat.ID,
+			Text:      "🔍 *IRR Monitor Bot*\n\nI will notify you about new ASN allocations from APNIC and RIPE.\n\nThis chat ID: `" + fmt.Sprintf("%d", update.Message.Chat.ID) + "`",
+			ParseMode: models.ParseModeMarkdown,
+		})
+		if err != nil {
+			log.Printf("Error sending start message: %v", err)
+		}
+		return
+	}
+
+	if strings.HasPrefix(update.Message.Text, "/chatid") {
+		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:    update.Message.Chat.ID,
+			Text:      fmt.Sprintf("Your chat ID is: `%d`", update.Message.Chat.ID),
+			ParseMode: models.ParseModeMarkdown,
+		})
+		if err != nil {
+			log.Printf("Error sending chat ID: %v", err)
+		}
+	}
+}
+
+func (b *Bot) Start(ctx context.Context) {
+	go b.bot.Start(ctx)
+	log.Println("Telegram bot started")
+}
+
+func (b *Bot) NotifyNewASN(ctx context.Context, source string, autNum *nrtm.AutNum) error {
+	message := formatASNMessage(source, autNum)
+
+	var lastErr error
+	for _, channel := range b.channels {
+		_, err := b.bot.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:    channel,
+			Text:      message,
+			ParseMode: models.ParseModeMarkdown,
+		})
+		if err != nil {
+			log.Printf("Error sending message to channel %v: %v", channel, err)
+			lastErr = err
+		}
+	}
+
+	return lastErr
+}
+
+func formatASNMessage(source string, autNum *nrtm.AutNum) string {
+	var sb strings.Builder
+
+	sb.WriteString("🆕 *New ASN Allocation*\n\n")
+	sb.WriteString(fmt.Sprintf("📋 *Source:* `%s`\n", source))
+	sb.WriteString(fmt.Sprintf("🔢 *ASN:* `%s`\n", autNum.ASN))
+
+	if autNum.AsName != "" {
+		sb.WriteString(fmt.Sprintf("📛 *Name:* %s\n", escapeMarkdown(autNum.AsName)))
+	}
+
+	if autNum.Descr != "" {
+		sb.WriteString(fmt.Sprintf("📝 *Description:* %s\n", escapeMarkdown(autNum.Descr)))
+	}
+
+	if autNum.Country != "" {
+		sb.WriteString(fmt.Sprintf("🌍 *Country:* %s\n", autNum.Country))
+	}
+
+	if autNum.OrgName != "" {
+		sb.WriteString(fmt.Sprintf("🏢 *Organization:* %s\n", escapeMarkdown(autNum.OrgName)))
+	}
+
+	if autNum.Status != "" {
+		sb.WriteString(fmt.Sprintf("📊 *Status:* %s\n", autNum.Status))
+	}
+
+	return sb.String()
+}
+
+func escapeMarkdown(s string) string {
+	replacer := strings.NewReplacer(
+		"_", "\\_",
+		"*", "\\*",
+		"[", "\\[",
+		"]", "\\]",
+		"(", "\\(",
+		")", "\\)",
+		"~", "\\~",
+		"`", "\\`",
+		">", "\\>",
+		"#", "\\#",
+		"+", "\\+",
+		"-", "\\-",
+		"=", "\\=",
+		"|", "\\|",
+		"{", "\\{",
+		"}", "\\}",
+		".", "\\.",
+		"!", "\\!",
+	)
+	return replacer.Replace(s)
+}
