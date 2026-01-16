@@ -59,7 +59,13 @@ type Update struct {
 func (c *Client) GetCurrentSerial() (int64, error) {
 	client := &http.Client{Timeout: c.Timeout}
 
-	resp, err := client.Get(c.Config.SerialURL)
+	req, err := http.NewRequest("GET", c.Config.SerialURL, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("User-Agent", "irr-monitor/1.0")
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("failed to fetch current serial: %w", err)
 	}
