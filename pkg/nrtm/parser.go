@@ -19,6 +19,7 @@ type AutNum struct {
 	Org     string
 	OrgName string
 	Status  string
+	Created string
 }
 
 func ParseRPSLObject(text string) *RPSLObject {
@@ -99,6 +100,7 @@ func (o *RPSLObject) ToAutNum() *AutNum {
 		Org:     o.Attributes["org"],
 		OrgName: o.Attributes["org-name"],
 		Status:  o.Attributes["status"],
+		Created: o.Attributes["created"],
 	}
 }
 

@@ -135,7 +135,15 @@ func (m *ASNMonitor) pollRIR(rir string, client *nrtm.Client) {
 			continue
 		}
 
-		// For RIPE, lookup org's country instead of aut-num's country
+		if autNum.Created != "" {
+			createdTime, err := time.Parse("2006-01-02T15:04:05Z", autNum.Created)
+			if err == nil {
+				if time.Since(createdTime) > 24*time.Hour {
+					continue
+				}
+			}
+		}
+
 		if rir == "RIPE" && autNum.Org != "" {
 			if orgCountry, err := nrtm.QueryOrgCountry(autNum.Org); err == nil && orgCountry != "" {
 				autNum.Country = orgCountry
