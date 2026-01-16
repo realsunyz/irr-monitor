@@ -1,5 +1,5 @@
 # Binaries
-irr-monitor
+/irr-monitor
 *.exe
 
 # Environment files with secrets
