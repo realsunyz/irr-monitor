@@ -45,21 +45,21 @@ func NewMonitor(dataDir string, callback func(string, *telegram.AutNum)) *Monito
 func (m *Monitor) Start(ctx context.Context) {
 	data, err := m.loadLatestData()
 	if err != nil {
-		log.Printf("APNIC Monitor: Failed to load existing data: %v", err)
+		log.Printf("[APNIC Monitor] Failed to load existing data: %v", err)
 	}
 
 	if data != nil {
 		m.previousData = data
-		log.Printf("APNIC Monitor: Loaded %d ASNs from %s", len(data.ASNs), filepath.Base(data.FilePath))
+		log.Printf("[APNIC Monitor] Loaded %d ASNs from %s", len(data.ASNs), filepath.Base(data.FilePath))
 		telegram.Status.UpdateAPNIC(len(data.ASNs), filepath.Base(data.FilePath), "")
 	} else {
-		log.Println("APNIC Monitor: No existing data, fetching fresh...")
+		log.Println("[APNIC Monitor] No existing data, fetching fresh...")
 		newData, err := m.fetchAndSave()
 		if err != nil {
-			log.Printf("APNIC Monitor: Failed to fetch initial data: %v", err)
+			log.Printf("[APNIC Monitor] Failed to fetch initial data: %v", err)
 		} else {
 			m.previousData = newData
-			log.Printf("APNIC Monitor: Saved %d ASNs to %s", len(newData.ASNs), filepath.Base(newData.FilePath))
+			log.Printf("[APNIC Monitor] Saved %d ASNs to %s", len(newData.ASNs), filepath.Base(newData.FilePath))
 			telegram.Status.UpdateAPNIC(len(newData.ASNs), filepath.Base(newData.FilePath), "")
 		}
 	}
@@ -76,11 +76,11 @@ func (m *Monitor) scheduleDaily(ctx context.Context) {
 		}
 
 		waitDuration := next.Sub(now)
-		log.Printf("APNIC Monitor: Next check at %s (in %s)", next.Format(time.RFC3339), waitDuration)
+		log.Printf("[APNIC Monitor] Next check at %s (in %s)", next.Format(time.RFC3339), waitDuration)
 
 		select {
 		case <-ctx.Done():
-			log.Println("APNIC Monitor: Shutting down...")
+			log.Println("[APNIC Monitor] Shutting down...")
 			return
 		case <-time.After(waitDuration):
 			m.checkForNewASNs()
@@ -89,14 +89,14 @@ func (m *Monitor) scheduleDaily(ctx context.Context) {
 }
 
 func (m *Monitor) checkForNewASNs() {
-	log.Println("APNIC Monitor: Fetching delegated data...")
+	log.Println("[APNIC Monitor] Fetching delegated data...")
 	newData, err := m.fetchAndSave()
 	if err != nil {
-		log.Printf("APNIC Monitor: Failed to fetch data: %v", err)
+		log.Printf("[APNIC Monitor] Failed to fetch data: %v", err)
 		return
 	}
 
-	log.Printf("APNIC Monitor: Saved to %s", filepath.Base(newData.FilePath))
+	log.Printf("[APNIC Monitor] Saved to %s", filepath.Base(newData.FilePath))
 	m.cleanupOldFiles(2)
 
 	if m.previousData == nil {
@@ -112,7 +112,7 @@ func (m *Monitor) checkForNewASNs() {
 		}
 	}
 
-	log.Printf("APNIC Monitor: Found %d new ASNs", len(newASNs))
+	log.Printf("[APNIC Monitor] Found %d new ASNs", len(newASNs))
 
 	for _, entry := range newASNs {
 		info := m.queryASNInfo(entry.ASN)
@@ -124,7 +124,7 @@ func (m *Monitor) checkForNewASNs() {
 			}
 		}
 
-		log.Printf("APNIC Monitor: New ASN: %s (%s)", info.ASN, info.AsName)
+		log.Printf("[APNIC Monitor] New ASN: %s (%s)", info.ASN, info.AsName)
 
 		if m.callback != nil {
 			m.callback("APNIC", info)

@@ -73,7 +73,7 @@ func (m *Monitor) Start(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("RIPE Monitor: Shutting down...")
+			log.Println("[RIPE Monitor] Shutting down...")
 			return
 		case <-ticker.C:
 			m.poll()
@@ -85,19 +85,19 @@ func (m *Monitor) initializeSerial() {
 	if m.state.GetSerial(Source) == 0 {
 		serial, err := m.getCurrentSerial()
 		if err != nil {
-			log.Printf("RIPE Monitor: Failed to get current serial: %v", err)
+			log.Printf("[RIPE Monitor] Failed to get current serial: %v", err)
 			return
 		}
 		m.state.SetSerial(Source, serial)
-		log.Printf("RIPE Monitor: Initialized at serial %d", serial)
+		log.Printf("[RIPE Monitor] Initialized at serial %d", serial)
 	} else {
-		log.Printf("RIPE Monitor: Resuming from serial %d", m.state.GetSerial(Source))
+		log.Printf("[RIPE Monitor] Resuming from serial %d", m.state.GetSerial(Source))
 	}
 
 	telegram.Status.UpdateRIPE(m.state.GetSerial(Source), "")
 
 	if err := m.state.Save(); err != nil {
-		log.Printf("RIPE Monitor: Failed to save state: %v", err)
+		log.Printf("[RIPE Monitor] Failed to save state: %v", err)
 	}
 }
 
@@ -136,7 +136,7 @@ func (m *Monitor) poll() {
 
 	updates, err := m.fetchUpdates(fromSerial + 1)
 	if err != nil {
-		log.Printf("RIPE Monitor: Error fetching updates: %v", err)
+		log.Printf("[RIPE Monitor] Error fetching updates: %v", err)
 		return
 	}
 
@@ -144,7 +144,7 @@ func (m *Monitor) poll() {
 		return
 	}
 
-	log.Printf("RIPE Monitor: Received %d updates", len(updates))
+	log.Printf("[RIPE Monitor] Received %d updates", len(updates))
 
 	var maxSerial int64
 	var wg sync.WaitGroup
@@ -179,7 +179,7 @@ func (m *Monitor) poll() {
 			sponsoringOrgName, _, _ = m.queryOrgInfo(autNum.SponsoringOrg)
 		}
 
-		log.Printf("RIPE Monitor: New ASN: %s (%s)", autNum.ASN, autNum.AsName)
+		log.Printf("[RIPE Monitor] New ASN: %s (%s)", autNum.ASN, autNum.AsName)
 
 		tgAutNum := &telegram.AutNum{
 			ASN:               autNum.ASN,
@@ -210,7 +210,7 @@ func (m *Monitor) poll() {
 		m.state.UpdateSerial(Source, maxSerial)
 		telegram.Status.UpdateRIPE(maxSerial, "")
 		if err := m.state.Save(); err != nil {
-			log.Printf("RIPE Monitor: Failed to save state: %v", err)
+			log.Printf("[RIPE Monitor] Failed to save state: %v", err)
 		}
 	}
 }
