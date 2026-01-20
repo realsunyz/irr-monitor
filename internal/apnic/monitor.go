@@ -256,6 +256,8 @@ func (m *Monitor) queryASNInfo(asn string) *telegram.AutNum {
 
 	info := &telegram.AutNum{ASN: asn, Source: "APNIC"}
 	var org string
+	var sponsoringOrg string
+	var mntBy string
 	inAutNum := false
 
 	scanner := bufio.NewScanner(conn)
@@ -286,23 +288,36 @@ func (m *Monitor) queryASNInfo(asn string) *telegram.AutNum {
 			info.Country = strings.TrimSpace(strings.TrimPrefix(line, "country:"))
 		} else if strings.HasPrefix(line, "org:") && org == "" {
 			org = strings.TrimSpace(strings.TrimPrefix(line, "org:"))
+		} else if strings.HasPrefix(line, "sponsoring-org:") && sponsoringOrg == "" {
+			sponsoringOrg = strings.TrimSpace(strings.TrimPrefix(line, "sponsoring-org:"))
+		} else if strings.HasPrefix(line, "mnt-by:") && mntBy == "" {
+			mntBy = strings.TrimSpace(strings.TrimPrefix(line, "mnt-by:"))
 		}
 	}
 
+	info.MntBy = mntBy
+
 	if org != "" {
 		info.Org = org
-		orgName, orgCountry := m.queryOrgInfo(org)
+		orgName, orgType, orgCountry := m.queryOrgInfo(org)
 		info.OrgName = orgName
+		info.OrgType = orgType
 		info.OrgCountry = orgCountry
+	}
+
+	if sponsoringOrg != "" {
+		info.SponsoringOrg = sponsoringOrg
+		sponsoringOrgName, _, _ := m.queryOrgInfo(sponsoringOrg)
+		info.SponsoringOrgName = sponsoringOrgName
 	}
 
 	return info
 }
 
-func (m *Monitor) queryOrgInfo(orgID string) (orgName, country string) {
+func (m *Monitor) queryOrgInfo(orgID string) (orgName, orgType, country string) {
 	conn, err := net.DialTimeout("tcp", "whois.apnic.net:43", 10*time.Second)
 	if err != nil {
-		return "", ""
+		return "", "", ""
 	}
 	defer conn.Close()
 
@@ -314,10 +329,12 @@ func (m *Monitor) queryOrgInfo(orgID string) (orgName, country string) {
 		line := scanner.Text()
 		if strings.HasPrefix(line, "org-name:") && orgName == "" {
 			orgName = strings.TrimSpace(strings.TrimPrefix(line, "org-name:"))
+		} else if strings.HasPrefix(line, "org-type:") && orgType == "" {
+			orgType = strings.TrimSpace(strings.TrimPrefix(line, "org-type:"))
 		} else if strings.HasPrefix(line, "country:") && country == "" {
 			country = strings.TrimSpace(strings.TrimPrefix(line, "country:"))
 		}
 	}
 
-	return orgName, country
+	return orgName, orgType, country
 }

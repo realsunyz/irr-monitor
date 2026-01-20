@@ -12,14 +12,18 @@ import (
 )
 
 type AutNum struct {
-	ASN        string
-	AsName     string
-	Descr      string
-	Country    string
-	Org        string
-	OrgName    string
-	OrgCountry string
-	Source     string
+	ASN               string
+	AsName            string
+	Descr             string
+	Country           string
+	Org               string
+	OrgName           string
+	OrgType           string
+	OrgCountry        string
+	SponsoringOrg     string
+	SponsoringOrgName string
+	MntBy             string
+	Source            string
 }
 
 type Bot struct {
@@ -133,8 +137,18 @@ func formatASNMessage(source string, autNum *AutNum) string {
 		if autNum.OrgName != "" {
 			sb.WriteString(fmt.Sprintf("<b>org-name:</b> %s\n", escapeHTML(autNum.OrgName)))
 		}
+		if autNum.OrgType != "" {
+			sb.WriteString(fmt.Sprintf("<b>org-type:</b> %s\n", autNum.OrgType))
+		}
 		if autNum.OrgCountry != "" {
 			sb.WriteString(fmt.Sprintf("<b>country:</b> %s\n", autNum.OrgCountry))
+		}
+	}
+
+	if source == "APNIC" {
+		sponsoredBy := getSponsoredBy(autNum)
+		if sponsoredBy != "" {
+			sb.WriteString(fmt.Sprintf("\n%s\n", sponsoredBy))
 		}
 	}
 
@@ -151,6 +165,35 @@ func formatASNMessage(source string, autNum *AutNum) string {
 	sb.WriteString(fmt.Sprintf("\n\n#%s", source))
 
 	return sb.String()
+}
+
+var nirMapping = map[string]string{
+	"MNT-APJII-ID":   "IDNIC",
+	"MAINT-CNNIC-AP": "CNNIC",
+	"MAINT-JPNIC":    "JPNIC",
+	"MNT-KRNIC-AP":   "KRNIC",
+	"MAINT-TW-TWNIC": "TWNIC",
+	"MAINT-IN-IRINN": "IRINN",
+	"MAINT-VN-VNNIC": "VNNIC",
+}
+
+func getSponsoredBy(autNum *AutNum) string {
+	if autNum.SponsoringOrg != "" {
+		if autNum.SponsoringOrgName != "" {
+			return fmt.Sprintf("Sponsored by %s (%s).", escapeHTML(autNum.SponsoringOrgName), autNum.SponsoringOrg)
+		}
+		return fmt.Sprintf("Sponsored by %s.", autNum.SponsoringOrg)
+	}
+
+	if autNum.OrgType == "LIR" {
+		return ""
+	}
+
+	if nirName, ok := nirMapping[autNum.MntBy]; ok {
+		return fmt.Sprintf("Sponsored by %s (%s).", nirName, autNum.MntBy)
+	}
+
+	return ""
 }
 
 func escapeHTML(s string) string {
