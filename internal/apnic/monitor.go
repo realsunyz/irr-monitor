@@ -105,7 +105,6 @@ func (m *Monitor) checkForNewASNs() {
 		return
 	}
 
-	// Find new ASNs
 	var newASNs []ASNEntry
 	for asn, entry := range newData.ASNs {
 		if _, exists := m.previousData.ASNs[asn]; !exists {
@@ -257,10 +256,28 @@ func (m *Monitor) queryASNInfo(asn string) *telegram.AutNum {
 
 	info := &telegram.AutNum{ASN: asn, Source: "APNIC"}
 	var org string
+	inAutNum := false
 
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		line := scanner.Text()
+
+		if strings.HasPrefix(line, "aut-num:") {
+			inAutNum = true
+			continue
+		}
+
+		if line == "" {
+			if inAutNum {
+				break
+			}
+			continue
+		}
+
+		if !inAutNum {
+			continue
+		}
+
 		if strings.HasPrefix(line, "as-name:") && info.AsName == "" {
 			info.AsName = strings.TrimSpace(strings.TrimPrefix(line, "as-name:"))
 		} else if strings.HasPrefix(line, "descr:") && info.Descr == "" {
@@ -272,7 +289,6 @@ func (m *Monitor) queryASNInfo(asn string) *telegram.AutNum {
 		}
 	}
 
-	// Query org info if org is found
 	if org != "" {
 		info.Org = org
 		orgName, orgCountry := m.queryOrgInfo(org)
