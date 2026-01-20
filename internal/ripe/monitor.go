@@ -25,13 +25,14 @@ const (
 )
 
 type AutNum struct {
-	ASN          string
-	AsName       string
-	Descr        string
-	Country      string
-	Org          string
-	Created      string
-	LastModified string
+	ASN           string
+	AsName        string
+	Descr         string
+	Country       string
+	Org           string
+	SponsoringOrg string
+	Created       string
+	LastModified  string
 }
 
 type Update struct {
@@ -168,22 +169,30 @@ func (m *Monitor) poll() {
 			}
 		}
 
-		var orgName, orgCountry string
+		var orgName, orgType, orgCountry string
 		if autNum.Org != "" {
-			orgName, orgCountry = m.queryOrgInfo(autNum.Org)
+			orgName, orgType, orgCountry = m.queryOrgInfo(autNum.Org)
+		}
+
+		var sponsoringOrgName string
+		if autNum.SponsoringOrg != "" {
+			sponsoringOrgName, _, _ = m.queryOrgInfo(autNum.SponsoringOrg)
 		}
 
 		log.Printf("RIPE Monitor: New ASN: %s (%s)", autNum.ASN, autNum.AsName)
 
 		tgAutNum := &telegram.AutNum{
-			ASN:        autNum.ASN,
-			AsName:     autNum.AsName,
-			Descr:      autNum.Descr,
-			Country:    autNum.Country,
-			Org:        autNum.Org,
-			OrgName:    orgName,
-			OrgCountry: orgCountry,
-			Source:     Source,
+			ASN:               autNum.ASN,
+			AsName:            autNum.AsName,
+			Descr:             autNum.Descr,
+			Country:           autNum.Country,
+			Org:               autNum.Org,
+			OrgName:           orgName,
+			OrgType:           orgType,
+			OrgCountry:        orgCountry,
+			SponsoringOrg:     autNum.SponsoringOrg,
+			SponsoringOrgName: sponsoringOrgName,
+			Source:            Source,
 		}
 
 		if m.callback != nil {
@@ -374,20 +383,21 @@ func (m *Monitor) parseRPSLObject(text string) *RPSLObject {
 
 func (m *Monitor) parseAutNum(obj *RPSLObject) *AutNum {
 	return &AutNum{
-		ASN:          obj.Attributes["aut-num"],
-		AsName:       obj.Attributes["as-name"],
-		Descr:        obj.Attributes["descr"],
-		Country:      obj.Attributes["country"],
-		Org:          obj.Attributes["org"],
-		Created:      obj.Attributes["created"],
-		LastModified: obj.Attributes["last-modified"],
+		ASN:           obj.Attributes["aut-num"],
+		AsName:        obj.Attributes["as-name"],
+		Descr:         obj.Attributes["descr"],
+		Country:       obj.Attributes["country"],
+		Org:           obj.Attributes["org"],
+		SponsoringOrg: obj.Attributes["sponsoring-org"],
+		Created:       obj.Attributes["created"],
+		LastModified:  obj.Attributes["last-modified"],
 	}
 }
 
-func (m *Monitor) queryOrgInfo(orgID string) (orgName, country string) {
+func (m *Monitor) queryOrgInfo(orgID string) (orgName, orgType, country string) {
 	conn, err := net.DialTimeout("tcp", "whois.ripe.net:43", 10*time.Second)
 	if err != nil {
-		return "", ""
+		return "", "", ""
 	}
 	defer conn.Close()
 
@@ -401,10 +411,12 @@ func (m *Monitor) queryOrgInfo(orgID string) (orgName, country string) {
 		line := scanner.Text()
 		if strings.HasPrefix(line, "org-name:") && orgName == "" {
 			orgName = strings.TrimSpace(strings.TrimPrefix(line, "org-name:"))
+		} else if strings.HasPrefix(line, "org-type:") && orgType == "" {
+			orgType = strings.TrimSpace(strings.TrimPrefix(line, "org-type:"))
 		} else if strings.HasPrefix(line, "country:") && country == "" {
 			country = strings.TrimSpace(strings.TrimPrefix(line, "country:"))
 		}
 	}
 
-	return orgName, country
+	return orgName, orgType, country
 }

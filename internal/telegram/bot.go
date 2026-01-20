@@ -145,7 +145,7 @@ func formatASNMessage(source string, autNum *AutNum) string {
 		}
 	}
 
-	if source == "APNIC" {
+	if source == "APNIC" || source == "RIPE" {
 		sponsoredBy := getSponsoredBy(autNum)
 		if sponsoredBy != "" {
 			sb.WriteString(fmt.Sprintf("\n%s\n", sponsoredBy))
