@@ -56,23 +56,23 @@ func defaultHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 		ripeSerial, ripeLastCheck, _, apnicCount, apnicLastCheck, apnicFile, _ := Status.GetStatus()
 
 		var sb strings.Builder
-		sb.WriteString("<b>IRR Monitor Status</b>\n\n")
+		sb.WriteString("IRR Monitor Status\n\n")
 
-		sb.WriteString("<b>🇪🇺 RIPE (NRTM)</b>\n")
-		if ripeSerial > 0 {
-			sb.WriteString(fmt.Sprintf("    Serial: %d\n", ripeSerial))
-			sb.WriteString(fmt.Sprintf("    Last Check: %s\n", formatTimeAgo(ripeLastCheck)))
-		} else {
-			sb.WriteString("    Not Initialized\n")
-		}
-
-		sb.WriteString("\n<b>🌏 APNIC (Delegated)</b>\n")
+		sb.WriteString("- APNIC\n")
 		if apnicCount > 0 {
 			sb.WriteString(fmt.Sprintf("    Total ASNs: %d\n", apnicCount))
 			sb.WriteString(fmt.Sprintf("    Last Check: %s\n", formatTimeAgo(apnicLastCheck)))
 			if apnicFile != "" {
 				sb.WriteString(fmt.Sprintf("    File: %s\n", apnicFile))
 			}
+		} else {
+			sb.WriteString("    Not Initialized\n")
+		}
+
+		sb.WriteString("\n- RIPE\n")
+		if ripeSerial > 0 {
+			sb.WriteString(fmt.Sprintf("    Serial: %d\n", ripeSerial))
+			sb.WriteString(fmt.Sprintf("    Last Check: %s\n", formatTimeAgo(ripeLastCheck)))
 		} else {
 			sb.WriteString("    Not Initialized\n")
 		}
