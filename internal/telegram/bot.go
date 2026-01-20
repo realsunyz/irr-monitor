@@ -121,7 +121,7 @@ func (b *Bot) NotifyNewASN(ctx context.Context, source string, autNum *AutNum) e
 func formatASNMessage(source string, autNum *AutNum) string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("<b>New %s ASN Allocation</b>\n\n", source))
+	sb.WriteString(fmt.Sprintf("<b>New %s ASN Assignment</b>\n\n", source))
 	sb.WriteString(fmt.Sprintf("<b>aut-num:</b> %s\n", autNum.ASN))
 	sb.WriteString(fmt.Sprintf("<b>as-name:</b> %s\n", escapeHTML(autNum.AsName)))
 
