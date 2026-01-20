@@ -77,6 +77,9 @@ func defaultHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 			ChatID:    update.Message.Chat.ID,
 			Text:      sb.String(),
 			ParseMode: models.ParseModeHTML,
+			LinkPreviewOptions: &models.LinkPreviewOptions{
+				IsDisabled: ptr(true),
+			},
 		})
 		if err != nil {
 			log.Printf("Error sending status message: %v", err)
@@ -98,6 +101,9 @@ func (b *Bot) NotifyNewASN(ctx context.Context, source string, autNum *AutNum) e
 			ChatID:    channel,
 			Text:      message,
 			ParseMode: models.ParseModeHTML,
+			LinkPreviewOptions: &models.LinkPreviewOptions{
+				IsDisabled: ptr(true),
+			},
 		})
 		if err != nil {
 			log.Printf("Error sending message to channel %v: %v", channel, err)
@@ -154,6 +160,10 @@ func escapeHTML(s string) string {
 		">", "&gt;",
 	)
 	return replacer.Replace(s)
+}
+
+func ptr[T any](v T) *T {
+	return &v
 }
 
 func formatTimeAgo(t time.Time) string {
