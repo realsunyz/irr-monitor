@@ -53,7 +53,7 @@ func defaultHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	}
 
 	if update.Message.Text == "/status" {
-		ripeSerial, ripeLastCheck, _, apnicCount, apnicLastCheck, apnicFile, _ := Status.GetStatus()
+		ripeSerial, ripeLastCheck, _, arinSerial, arinLastCheck, _, apnicCount, apnicLastCheck, apnicFile, _ := Status.GetStatus()
 
 		var sb strings.Builder
 		sb.WriteString("IRR Monitor Status\n\n")
@@ -65,6 +65,14 @@ func defaultHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 			if apnicFile != "" {
 				sb.WriteString(fmt.Sprintf("    File: %s\n", apnicFile))
 			}
+		} else {
+			sb.WriteString("    Not Initialized\n")
+		}
+
+		sb.WriteString("\n- ARIN\n")
+		if arinSerial > 0 {
+			sb.WriteString(fmt.Sprintf("    Serial: %d\n", arinSerial))
+			sb.WriteString(fmt.Sprintf("    Last Check: %s\n", formatTimeAgo(arinLastCheck)))
 		} else {
 			sb.WriteString("    Not Initialized\n")
 		}
@@ -125,6 +133,10 @@ func formatASNMessage(source string, autNum *AutNum) string {
 	sb.WriteString(fmt.Sprintf("<b>aut-num:</b> %s\n", autNum.ASN))
 	sb.WriteString(fmt.Sprintf("<b>as-name:</b> %s\n", escapeHTML(autNum.AsName)))
 
+	if shouldIncludeDescr(source, autNum) && autNum.Descr != "" {
+		sb.WriteString(fmt.Sprintf("<b>descr:</b> %s\n", escapeHTML(autNum.Descr)))
+	}
+
 	if autNum.Country != "" {
 		sb.WriteString(fmt.Sprintf("<b>country:</b> %s\n", autNum.Country))
 	}
@@ -157,6 +169,8 @@ func formatASNMessage(source string, autNum *AutNum) string {
 	sb.WriteString("\n")
 	if source == "RIPE" {
 		sb.WriteString(fmt.Sprintf("<a href=\"https://apps.db.ripe.net/db-web-ui/lookup?source=ripe&amp;key=%s&amp;type=aut-num\">RIPE DB</a>", autNum.ASN))
+	} else if source == "ARIN" {
+		sb.WriteString(fmt.Sprintf("<a href=\"https://search.arin.net/rdap/?query=%s\">ARIN RDAP</a>", autNum.ASN))
 	} else {
 		sb.WriteString(fmt.Sprintf("<a href=\"https://wq.apnic.net/static/search.html?query=%s\">APNIC DB</a>", autNum.ASN))
 	}
@@ -194,6 +208,19 @@ func getSponsoredBy(autNum *AutNum) string {
 	}
 
 	return ""
+}
+
+func shouldIncludeDescr(source string, autNum *AutNum) bool {
+	if source == "ARIN" {
+		return true
+	}
+
+	if source != "APNIC" {
+		return false
+	}
+
+	_, isNIR := nirMapping[autNum.MntBy]
+	return isNIR
 }
 
 func escapeHTML(s string) string {

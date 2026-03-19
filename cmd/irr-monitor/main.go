@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"flag"
+	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -12,6 +15,9 @@ import (
 	"time"
 
 	"github.com/realSunyz/irr-monitor/internal/apnic"
+	"github.com/realSunyz/irr-monitor/internal/arin"
+	"github.com/realSunyz/irr-monitor/internal/nrtm"
+	"github.com/realSunyz/irr-monitor/internal/nrtmtest"
 	"github.com/realSunyz/irr-monitor/internal/ripe"
 	"github.com/realSunyz/irr-monitor/internal/state"
 	"github.com/realSunyz/irr-monitor/internal/telegram"
@@ -25,6 +31,10 @@ type Config struct {
 }
 
 func main() {
+	if handled := handleCLI(os.Args[1:], os.Stdout, os.Stderr); handled {
+		return
+	}
+
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.Println("Starting IRR Monitor...")
 
@@ -64,11 +74,111 @@ func main() {
 	apnicMonitor := apnic.NewMonitor(dataDir, callback)
 	go apnicMonitor.Start(ctx)
 
+	arinMonitor := arin.NewMonitor(st, config.PollInterval, callback)
+	go arinMonitor.Start(ctx)
+
 	ripeMonitor := ripe.NewMonitor(st, config.PollInterval, callback)
 	log.Printf("Starting RIPE ASN monitoring, poll interval: %s", config.PollInterval)
 	ripeMonitor.Start(ctx)
 
 	log.Println("IRR Monitor stopped")
+}
+
+func handleCLI(args []string, stdout, stderr io.Writer) bool {
+	if len(args) == 0 {
+		return false
+	}
+
+	switch args[0] {
+	case "test-nrtm":
+		os.Exit(runNRTMTest(args[1:], stdout, stderr))
+		return true
+	default:
+		return false
+	}
+}
+
+func runNRTMTest(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("test-nrtm", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+
+	source := fs.String("source", "all", "registry to test: arin, ripe, all")
+	timeout := fs.Duration("timeout", 10*time.Second, "timeout for each request")
+
+	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return 0
+		}
+		return 2
+	}
+
+	if fs.NArg() > 0 {
+		*source = fs.Arg(0)
+	}
+
+	registries, err := registriesForSource(*source)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+
+	fmt.Fprintf(stdout, "Testing NRTM connectivity at %s\n\n", time.Now().Format(time.RFC3339))
+
+	exitCode := 0
+	for _, registry := range registries {
+		ctx, cancel := context.WithTimeout(context.Background(), *timeout*3)
+		result, err := nrtmtest.Probe(ctx, registry, *timeout)
+		cancel()
+
+		printProbeResult(stdout, result, err)
+		if err != nil {
+			exitCode = 1
+		}
+	}
+
+	return exitCode
+}
+
+func registriesForSource(source string) ([]nrtm.Registry, error) {
+	all := []nrtm.Registry{arin.Registry, ripe.Registry}
+
+	switch strings.ToLower(strings.TrimSpace(source)) {
+	case "", "all":
+		return all, nil
+	case "arin":
+		return all[:1], nil
+	case "ripe":
+		return all[1:], nil
+	default:
+		return nil, fmt.Errorf("unsupported source %q, expected one of: arin, ripe, all", source)
+	}
+}
+
+func printProbeResult(w io.Writer, result *nrtmtest.Result, probeErr error) {
+	fmt.Fprintf(w, "[%s]\n", result.Registry.Name)
+	fmt.Fprintf(w, "  Serial URL: %s\n", result.Registry.SerialURL)
+
+	if result.Serial > 0 {
+		fmt.Fprintf(w, "  Current Serial: %d (%s)\n", result.Serial, result.SerialLatency)
+	}
+
+	if result.TCPLatency > 0 {
+		fmt.Fprintf(w, "  TCP Connect: ok (%s)\n", result.TCPLatency)
+	}
+
+	if result.ResponseLine != "" {
+		fmt.Fprintf(w, "  NRTM Query: ok (%s)\n", result.QueryLatency)
+		fmt.Fprintf(w, "  First Line: %s\n", result.ResponseLine)
+	}
+
+	if probeErr != nil {
+		fmt.Fprintf(w, "  Result: failed\n")
+		fmt.Fprintf(w, "  Error: %v\n", probeErr)
+	} else {
+		fmt.Fprintf(w, "  Result: success\n")
+	}
+
+	fmt.Fprintln(w)
 }
 
 func loadConfig() *Config {

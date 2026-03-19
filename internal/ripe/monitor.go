@@ -4,25 +4,26 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"net"
-	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/realSunyz/irr-monitor/internal/nrtm"
 	"github.com/realSunyz/irr-monitor/internal/state"
 	"github.com/realSunyz/irr-monitor/internal/telegram"
 )
 
-const (
-	Host      = "whois.ripe.net"
-	Port      = 4444
-	Source    = "RIPE"
-	SerialURL = "https://ftp.ripe.net/ripe/dbase/RIPE.CURRENTSERIAL"
-)
+const Source = "RIPE"
+
+var Registry = nrtm.Registry{
+	Name:      Source,
+	Source:    Source,
+	Host:      "whois.ripe.net",
+	Port:      4444,
+	SerialURL: "https://ftp.ripe.net/ripe/dbase/RIPE.CURRENTSERIAL",
+}
 
 type AutNum struct {
 	ASN           string
@@ -35,30 +36,20 @@ type AutNum struct {
 	LastModified  string
 }
 
-type Update struct {
-	Operation string
-	Serial    int64
-	Object    *RPSLObject
-}
-
-type RPSLObject struct {
-	Type       string
-	Attributes map[string]string
-}
-
 type Monitor struct {
 	state        *state.State
 	pollInterval time.Duration
 	callback     func(source string, autNum *telegram.AutNum)
-	timeout      time.Duration
+	client       *nrtm.Client
 }
 
 func NewMonitor(st *state.State, pollInterval time.Duration, callback func(string, *telegram.AutNum)) *Monitor {
+	timeout := 30 * time.Second
 	return &Monitor{
 		state:        st,
 		pollInterval: pollInterval,
 		callback:     callback,
-		timeout:      30 * time.Second,
+		client:       nrtm.NewClient(Registry, timeout),
 	}
 }
 
@@ -83,7 +74,7 @@ func (m *Monitor) Start(ctx context.Context) {
 
 func (m *Monitor) initializeSerial() {
 	if m.state.GetSerial(Source) == 0 {
-		serial, err := m.getCurrentSerial()
+		serial, err := m.client.CurrentSerial(context.Background())
 		if err != nil {
 			log.Printf("[RIPE Monitor] Failed to get current serial: %v", err)
 			return
@@ -99,33 +90,6 @@ func (m *Monitor) initializeSerial() {
 	if err := m.state.Save(); err != nil {
 		log.Printf("[RIPE Monitor] Failed to save state: %v", err)
 	}
-}
-
-func (m *Monitor) getCurrentSerial() (int64, error) {
-	client := &http.Client{Timeout: m.timeout}
-
-	req, err := http.NewRequest("GET", SerialURL, nil)
-	if err != nil {
-		return 0, err
-	}
-	req.Header.Set("User-Agent", "irr-monitor/1.0")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("status code: %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return 0, err
-	}
-
-	return strconv.ParseInt(strings.TrimSpace(string(body)), 10, 64)
 }
 
 func (m *Monitor) poll() {
@@ -215,173 +179,11 @@ func (m *Monitor) poll() {
 	}
 }
 
-func (m *Monitor) fetchUpdates(fromSerial int64) ([]Update, error) {
-	addr := net.JoinHostPort(Host, fmt.Sprintf("%d", Port))
-
-	conn, err := net.DialTimeout("tcp", addr, m.timeout)
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
-
-	conn.SetDeadline(time.Now().Add(m.timeout * 2))
-
-	query := fmt.Sprintf("-g %s:3:%d-LAST\n", Source, fromSerial)
-	if _, err := conn.Write([]byte(query)); err != nil {
-		return nil, err
-	}
-
-	return m.parseResponse(conn)
+func (m *Monitor) fetchUpdates(fromSerial int64) ([]nrtm.Update, error) {
+	return m.client.Updates(context.Background(), fromSerial)
 }
 
-func (m *Monitor) parseResponse(r io.Reader) ([]Update, error) {
-	var updates []Update
-	reader := bufio.NewReader(r)
-
-	var currentOp string
-	var currentSerial int64
-	var objectLines []string
-	inObject := false
-
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			if len(updates) > 0 {
-				break
-			}
-			return nil, err
-		}
-
-		line = strings.TrimRight(line, "\r\n")
-
-		if line == "" {
-			if inObject && len(objectLines) > 0 {
-				obj := m.parseRPSLObject(strings.Join(objectLines, "\n"))
-				if obj != nil {
-					updates = append(updates, Update{
-						Operation: currentOp,
-						Serial:    currentSerial,
-						Object:    obj,
-					})
-				}
-				objectLines = nil
-				inObject = false
-			}
-			continue
-		}
-
-		if strings.HasPrefix(line, "%START") {
-			continue
-		}
-		if strings.HasPrefix(line, "%END") {
-			break
-		}
-		if strings.HasPrefix(line, "%") {
-			continue
-		}
-
-		if strings.HasPrefix(line, "ADD ") || strings.HasPrefix(line, "DEL ") {
-			if inObject && len(objectLines) > 0 {
-				obj := m.parseRPSLObject(strings.Join(objectLines, "\n"))
-				if obj != nil {
-					updates = append(updates, Update{
-						Operation: currentOp,
-						Serial:    currentSerial,
-						Object:    obj,
-					})
-				}
-				objectLines = nil
-			}
-
-			parts := strings.SplitN(line, " ", 2)
-			currentOp = parts[0]
-			if len(parts) > 1 {
-				currentSerial, _ = strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
-			}
-			inObject = true
-			continue
-		}
-
-		if inObject {
-			objectLines = append(objectLines, line)
-		}
-	}
-
-	if inObject && len(objectLines) > 0 {
-		obj := m.parseRPSLObject(strings.Join(objectLines, "\n"))
-		if obj != nil {
-			updates = append(updates, Update{
-				Operation: currentOp,
-				Serial:    currentSerial,
-				Object:    obj,
-			})
-		}
-	}
-
-	return updates, nil
-}
-
-func (m *Monitor) parseRPSLObject(text string) *RPSLObject {
-	if text == "" {
-		return nil
-	}
-
-	obj := &RPSLObject{Attributes: make(map[string]string)}
-
-	lines := strings.Split(text, "\n")
-	var currentAttr string
-	var currentValue strings.Builder
-
-	for _, line := range lines {
-		if line == "" || strings.HasPrefix(line, "%") || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		if len(line) > 0 && (line[0] == ' ' || line[0] == '\t' || line[0] == '+') {
-			if currentAttr != "" {
-				currentValue.WriteString(" ")
-				currentValue.WriteString(strings.TrimSpace(line))
-			}
-			continue
-		}
-
-		if currentAttr != "" {
-			if _, exists := obj.Attributes[currentAttr]; !exists {
-				obj.Attributes[currentAttr] = currentValue.String()
-			}
-		}
-
-		colonIdx := strings.Index(line, ":")
-		if colonIdx == -1 {
-			continue
-		}
-
-		currentAttr = strings.TrimSpace(line[:colonIdx])
-		currentValue.Reset()
-		currentValue.WriteString(strings.TrimSpace(line[colonIdx+1:]))
-
-		if obj.Type == "" {
-			obj.Type = currentAttr
-		}
-	}
-
-	if currentAttr != "" {
-		if _, exists := obj.Attributes[currentAttr]; !exists {
-			obj.Attributes[currentAttr] = currentValue.String()
-		}
-	}
-
-	if obj.Type == "" {
-		return nil
-	}
-
-	return obj
-}
-
-func (m *Monitor) parseAutNum(obj *RPSLObject) *AutNum {
+func (m *Monitor) parseAutNum(obj *nrtm.RPSLObject) *AutNum {
 	return &AutNum{
 		ASN:           obj.Attributes["aut-num"],
 		AsName:        obj.Attributes["as-name"],
@@ -395,7 +197,7 @@ func (m *Monitor) parseAutNum(obj *RPSLObject) *AutNum {
 }
 
 func (m *Monitor) queryOrgInfo(orgID string) (orgName, orgType, country string) {
-	conn, err := net.DialTimeout("tcp", "whois.ripe.net:43", 10*time.Second)
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(Registry.Host, "43"), 10*time.Second)
 	if err != nil {
 		return "", "", ""
 	}
