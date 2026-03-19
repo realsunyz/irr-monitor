@@ -1,11 +1,15 @@
 package state
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
 )
+
+const legacyDefaultSource = "RIPE"
 
 type State struct {
 	Serials  map[string]int64 `json:"serials"`
@@ -38,7 +42,13 @@ func (s *State) Load() error {
 		return err
 	}
 
-	return json.Unmarshal(data, &s.Serials)
+	serials, err := decodeState(data)
+	if err != nil {
+		return err
+	}
+
+	s.Serials = serials
+	return nil
 }
 
 func (s *State) Save() error {
@@ -78,4 +88,30 @@ func (s *State) UpdateSerial(source string, serial int64) bool {
 		return true
 	}
 	return false
+}
+
+func decodeState(data []byte) (map[string]int64, error) {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return make(map[string]int64), nil
+	}
+
+	var serials map[string]int64
+	if err := json.Unmarshal(trimmed, &serials); err == nil && serials != nil {
+		return serials, nil
+	}
+
+	var wrapped struct {
+		Serials map[string]int64 `json:"serials"`
+	}
+	if err := json.Unmarshal(trimmed, &wrapped); err == nil && wrapped.Serials != nil {
+		return wrapped.Serials, nil
+	}
+
+	var legacySerial int64
+	if err := json.Unmarshal(trimmed, &legacySerial); err == nil {
+		return map[string]int64{legacyDefaultSource: legacySerial}, nil
+	}
+
+	return nil, fmt.Errorf("unsupported state file format")
 }
