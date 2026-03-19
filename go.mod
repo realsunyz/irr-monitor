@@ -1,5 +1,5 @@
 module github.com/realSunyz/irr-monitor
 
-go 1.23
+go 1.25
 
-require github.com/go-telegram/bot v1.17.0
+require github.com/go-telegram/bot v1.19.0
