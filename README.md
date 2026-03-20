@@ -4,8 +4,8 @@ A Telegram bot that monitors new ASN allocations from RIPE, ARIN, and APNIC.
 
 ## Features
 
-- **RIPE**: Real-time monitoring via NRTM protocol (polling every 60s)
-- **ARIN**: Real-time monitoring via NRTM protocol (polling every 60s)
+- **RIPE**: Real-time monitoring via NRTM protocol (polling every 60s) with delegated baseline refresh at UTC 00:00
+- **ARIN**: Real-time monitoring via NRTM protocol (polling every 60s) with delegated baseline refresh at UTC 15:00
 - **APNIC**: Daily comparison of delegated files (UTC 16:00)
 - Sends notifications to Telegram channels with links to RIPE DB / ARIN RDAP / APNIC DB and BGP.TOOLS
 - Supports private-message filter subscriptions for ASN size, sponsoring-org, RIR, and APNIC NIR

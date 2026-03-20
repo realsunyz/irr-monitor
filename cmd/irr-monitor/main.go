@@ -75,10 +75,10 @@ func main() {
 	apnicMonitor := apnic.NewMonitor(dataDir, callback)
 	go apnicMonitor.Start(ctx)
 
-	arinMonitor := arin.NewMonitor(st, config.PollInterval, callback)
+	arinMonitor := arin.NewMonitor(st, dataDir, config.PollInterval, callback)
 	go arinMonitor.Start(ctx)
 
-	ripeMonitor := ripe.NewMonitor(st, config.PollInterval, callback)
+	ripeMonitor := ripe.NewMonitor(st, dataDir, config.PollInterval, callback)
 	log.Printf("Starting RIPE ASN monitoring, poll interval: %s", config.PollInterval)
 	ripeMonitor.Start(ctx)
 
