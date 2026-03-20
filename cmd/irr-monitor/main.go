@@ -24,10 +24,11 @@ import (
 )
 
 type Config struct {
-	TelegramToken string
-	Channels      []any
-	PollInterval  time.Duration
-	StateFile     string
+	TelegramToken   string
+	Channels        []any
+	PollInterval    time.Duration
+	StateFile       string
+	PreferencesFile string
 }
 
 func main() {
@@ -51,7 +52,7 @@ func main() {
 		cancel()
 	}()
 
-	bot, err := telegram.NewBot(config.TelegramToken, config.Channels)
+	bot, err := telegram.NewBot(config.TelegramToken, config.Channels, config.PreferencesFile)
 	if err != nil {
 		log.Fatalf("Failed to create Telegram bot: %v", err)
 	}
@@ -182,32 +183,28 @@ func printProbeResult(w io.Writer, result *nrtmtest.Result, probeErr error) {
 }
 
 func loadConfig() *Config {
+	defaultStateFile := filepath.Join("data", "state.json")
 	config := &Config{
-		TelegramToken: os.Getenv("TELEGRAM_BOT_TOKEN"),
-		StateFile:     getEnvOrDefault("STATE_FILE", "/data/state.json"),
+		TelegramToken:   os.Getenv("TELEGRAM_BOT_TOKEN"),
+		StateFile:       getEnvOrDefault("STATE_FILE", defaultStateFile),
+		PreferencesFile: getEnvOrDefault("PREFERENCES_FILE", filepath.Join(filepath.Dir(getEnvOrDefault("STATE_FILE", defaultStateFile)), "preferences.json")),
 	}
 
 	channelsStr := os.Getenv("TELEGRAM_CHANNELS")
-	if channelsStr == "" {
-		log.Fatal("TELEGRAM_CHANNELS environment variable is required")
-	}
-
-	for _, ch := range strings.Split(channelsStr, ",") {
-		ch = strings.TrimSpace(ch)
-		if ch == "" {
-			continue
-		}
-		if strings.HasPrefix(ch, "@") {
-			config.Channels = append(config.Channels, ch)
-		} else {
-			if id, err := strconv.ParseInt(ch, 10, 64); err == nil {
-				config.Channels = append(config.Channels, id)
+	if channelsStr != "" {
+		for _, ch := range strings.Split(channelsStr, ",") {
+			ch = strings.TrimSpace(ch)
+			if ch == "" {
+				continue
+			}
+			if strings.HasPrefix(ch, "@") {
+				config.Channels = append(config.Channels, ch)
+			} else {
+				if id, err := strconv.ParseInt(ch, 10, 64); err == nil {
+					config.Channels = append(config.Channels, id)
+				}
 			}
 		}
-	}
-
-	if len(config.Channels) == 0 {
-		log.Fatal("No valid channels provided")
 	}
 
 	pollIntervalStr := getEnvOrDefault("POLL_INTERVAL", "60")
