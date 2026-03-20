@@ -1,21 +1,13 @@
 package arin
 
 import (
-	"bufio"
-	"bytes"
 	"context"
-	"fmt"
-	"io"
 	"log"
-	"net/http"
-	"os"
 	"path/filepath"
-	"sort"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/realSunyz/irr-monitor/internal/delegated"
 	"github.com/realSunyz/irr-monitor/internal/nrtm"
 	"github.com/realSunyz/irr-monitor/internal/state"
 	"github.com/realSunyz/irr-monitor/internal/telegram"
@@ -45,31 +37,26 @@ type AutNum struct {
 	LastModified string
 }
 
-type DelegatedData struct {
-	ASNs     map[string]struct{}
-	FilePath string
-}
-
 type Monitor struct {
 	state        *state.State
-	dataDir      string
 	pollInterval time.Duration
 	callback     func(source string, autNum *telegram.AutNum)
 	client       *nrtm.Client
-	delegatedMu  sync.RWMutex
-	delegated    *DelegatedData
-	newlyAdded   map[string]struct{}
+	delegated    *delegated.Tracker
 }
 
 func NewMonitor(st *state.State, dataDir string, pollInterval time.Duration, callback func(string, *telegram.AutNum)) *Monitor {
 	timeout := 30 * time.Second
 	return &Monitor{
 		state:        st,
-		dataDir:      dataDir,
 		pollInterval: pollInterval,
 		callback:     callback,
 		client:       nrtm.NewClient(Registry, timeout),
-		newlyAdded:   make(map[string]struct{}),
+		delegated: delegated.NewTracker(dataDir, delegated.Config{
+			URL:                 DelegatedURL,
+			FilePrefix:          delegatedFilenamePrefix,
+			AllowedStatsSources: []string{"arin"},
+		}),
 	}
 }
 
@@ -95,30 +82,20 @@ func (m *Monitor) Start(ctx context.Context) {
 }
 
 func (m *Monitor) initializeDelegatedData() {
-	latest, previous, err := m.loadRecentDelegatedData()
+	latest, diffCount, err := m.delegated.Initialize()
 	if err != nil {
 		log.Printf("[ARIN Monitor] Failed to load delegated data: %v", err)
 	}
 
 	if latest == nil {
-		log.Println("[ARIN Monitor] No delegated baseline found, fetching fresh...")
-		fetched, err := m.fetchAndSaveDelegated()
-		if err != nil {
-			log.Printf("[ARIN Monitor] Failed to fetch delegated baseline: %v", err)
-			return
-		}
-
-		m.setDelegatedData(fetched, nil)
-		m.cleanupOldDelegatedFiles(2)
-		log.Printf("[ARIN Monitor] Saved delegated baseline with %d ASNs to %s", len(fetched.ASNs), filepath.Base(fetched.FilePath))
+		log.Println("[ARIN Monitor] Delegated baseline unavailable; proceeding without delegated snapshot")
 		return
 	}
 
-	newlyAdded := diffDelegatedData(previous, latest)
-	m.setDelegatedData(latest, newlyAdded)
+	telegram.Status.UpdateARINDelegated(filepath.Base(latest.FilePath), diffCount)
 
-	if previous != nil {
-		log.Printf("[ARIN Monitor] Loaded delegated baseline with %d ASNs from %s (%d newly added vs previous snapshot)", len(latest.ASNs), filepath.Base(latest.FilePath), len(newlyAdded))
+	if diffCount > 0 {
+		log.Printf("[ARIN Monitor] Loaded delegated baseline with %d ASNs from %s (%d newly added vs previous snapshot)", len(latest.ASNs), filepath.Base(latest.FilePath), diffCount)
 		return
 	}
 
@@ -168,18 +145,15 @@ func (m *Monitor) scheduleDelegatedRefresh(ctx context.Context) {
 func (m *Monitor) refreshDelegatedData() {
 	log.Println("[ARIN Monitor] Refreshing delegated baseline...")
 
-	newData, err := m.fetchAndSaveDelegated()
+	newData, diffCount, err := m.delegated.Refresh()
 	if err != nil {
 		log.Printf("[ARIN Monitor] Failed to refresh delegated baseline: %v", err)
 		return
 	}
 
-	previous := m.currentDelegatedData()
-	newlyAdded := diffDelegatedData(previous, newData)
-	m.setDelegatedData(newData, newlyAdded)
-	m.cleanupOldDelegatedFiles(2)
+	telegram.Status.UpdateARINDelegated(filepath.Base(newData.FilePath), diffCount)
 
-	log.Printf("[ARIN Monitor] Updated delegated baseline to %s with %d ASNs (%d newly added vs previous snapshot)", filepath.Base(newData.FilePath), len(newData.ASNs), len(newlyAdded))
+	log.Printf("[ARIN Monitor] Updated delegated baseline to %s with %d ASNs (%d newly added vs previous snapshot)", filepath.Base(newData.FilePath), len(newData.ASNs), diffCount)
 }
 
 func (m *Monitor) poll() {
@@ -220,7 +194,7 @@ func (m *Monitor) poll() {
 		if autNum.Created != "" && autNum.LastModified != "" && autNum.Created != autNum.LastModified {
 			continue
 		}
-		if !m.shouldNotifyASN(autNum.ASN) {
+		if !m.delegated.ShouldNotifyASN(autNum.ASN) {
 			log.Printf("[ARIN Monitor] Skipping historical ASN already present in delegated baseline: %s", autNum.ASN)
 			continue
 		}
@@ -268,183 +242,4 @@ func (m *Monitor) parseAutNum(obj *nrtm.RPSLObject) *AutNum {
 		Created:      obj.Attributes["created"],
 		LastModified: obj.Attributes["last-modified"],
 	}
-}
-
-func (m *Monitor) fetchAndSaveDelegated() (*DelegatedData, error) {
-	client := &http.Client{Timeout: 60 * time.Second}
-
-	req, err := http.NewRequest(http.MethodGet, DelegatedURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", "irr-monitor/1.0")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("status code: %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := os.MkdirAll(m.dataDir, 0755); err != nil {
-		return nil, err
-	}
-
-	filename := fmt.Sprintf("%s%s", delegatedFilenamePrefix, time.Now().UTC().Format("20060102"))
-	filePath := filepath.Join(m.dataDir, filename)
-	if err := os.WriteFile(filePath, body, 0644); err != nil {
-		return nil, err
-	}
-
-	data := m.parseDelegatedData(bytes.NewReader(body))
-	data.FilePath = filePath
-
-	return data, nil
-}
-
-func (m *Monitor) loadRecentDelegatedData() (latest *DelegatedData, previous *DelegatedData, err error) {
-	files, err := filepath.Glob(filepath.Join(m.dataDir, delegatedFilenamePrefix+"*"))
-	if err != nil {
-		return nil, nil, err
-	}
-	if len(files) == 0 {
-		return nil, nil, nil
-	}
-
-	sort.Strings(files)
-
-	latest, err = m.loadDelegatedFile(files[len(files)-1])
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if len(files) > 1 {
-		previous, err = m.loadDelegatedFile(files[len(files)-2])
-		if err != nil {
-			return nil, nil, err
-		}
-	}
-
-	return latest, previous, nil
-}
-
-func (m *Monitor) loadDelegatedFile(filePath string) (*DelegatedData, error) {
-	f, err := os.Open(filePath)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	data := m.parseDelegatedData(f)
-	data.FilePath = filePath
-
-	return data, nil
-}
-
-func (m *Monitor) parseDelegatedData(r io.Reader) *DelegatedData {
-	data := &DelegatedData{ASNs: make(map[string]struct{})}
-
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		parts := strings.Split(line, "|")
-		if len(parts) < 7 {
-			continue
-		}
-		if parts[0] != "arin" || parts[2] != "asn" {
-			continue
-		}
-		if parts[6] != "allocated" && parts[6] != "assigned" {
-			continue
-		}
-
-		start, err := strconv.ParseInt(parts[3], 10, 64)
-		if err != nil {
-			continue
-		}
-		count, err := strconv.ParseInt(parts[4], 10, 64)
-		if err != nil || count <= 0 {
-			continue
-		}
-
-		for i := int64(0); i < count; i++ {
-			data.ASNs[fmt.Sprintf("AS%d", start+i)] = struct{}{}
-		}
-	}
-
-	return data
-}
-
-func (m *Monitor) cleanupOldDelegatedFiles(keep int) {
-	files, _ := filepath.Glob(filepath.Join(m.dataDir, delegatedFilenamePrefix+"*"))
-	if len(files) <= keep {
-		return
-	}
-
-	sort.Strings(files)
-	for _, filePath := range files[:len(files)-keep] {
-		if err := os.Remove(filePath); err != nil {
-			log.Printf("[ARIN Monitor] Failed to remove old delegated snapshot %s: %v", filepath.Base(filePath), err)
-		}
-	}
-}
-
-func (m *Monitor) setDelegatedData(data *DelegatedData, newlyAdded map[string]struct{}) {
-	if newlyAdded == nil {
-		newlyAdded = make(map[string]struct{})
-	}
-
-	m.delegatedMu.Lock()
-	defer m.delegatedMu.Unlock()
-	m.delegated = data
-	m.newlyAdded = newlyAdded
-}
-
-func (m *Monitor) currentDelegatedData() *DelegatedData {
-	m.delegatedMu.RLock()
-	defer m.delegatedMu.RUnlock()
-	return m.delegated
-}
-
-func (m *Monitor) shouldNotifyASN(asn string) bool {
-	m.delegatedMu.RLock()
-	defer m.delegatedMu.RUnlock()
-
-	if _, ok := m.newlyAdded[asn]; ok {
-		return true
-	}
-	if m.delegated == nil {
-		return true
-	}
-	if _, exists := m.delegated.ASNs[asn]; exists {
-		return false
-	}
-	return true
-}
-
-func diffDelegatedData(previous, current *DelegatedData) map[string]struct{} {
-	newlyAdded := make(map[string]struct{})
-	if previous == nil || current == nil {
-		return newlyAdded
-	}
-
-	for asn := range current.ASNs {
-		if _, exists := previous.ASNs[asn]; !exists {
-			newlyAdded[asn] = struct{}{}
-		}
-	}
-
-	return newlyAdded
 }

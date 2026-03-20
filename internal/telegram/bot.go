@@ -221,7 +221,7 @@ func (b *Bot) sendMatchingPMs(ctx context.Context, event *NotificationEvent) {
 }
 
 func (b *Bot) sendStatus(ctx context.Context, sdkBot *bot.Bot, chatID int64) {
-	ripeSerial, ripeLastCheck, _, arinSerial, arinLastCheck, _, apnicCount, apnicLastCheck, apnicFile, _ := Status.GetStatus()
+	ripeSerial, ripeLastCheck, _, ripeFile, ripeDiff, arinSerial, arinLastCheck, _, arinFile, arinDiff, apnicCount, apnicLastCheck, apnicFile, _ := Status.GetStatus()
 
 	var sb strings.Builder
 	sb.WriteString("IRR Monitor Status\n\n")
@@ -241,6 +241,10 @@ func (b *Bot) sendStatus(ctx context.Context, sdkBot *bot.Bot, chatID int64) {
 	if arinSerial > 0 {
 		sb.WriteString(fmt.Sprintf("    Serial: %d\n", arinSerial))
 		sb.WriteString(fmt.Sprintf("    Last Check: %s\n", formatTimeAgo(arinLastCheck)))
+		if arinFile != "" {
+			sb.WriteString(fmt.Sprintf("    Delegated File: %s\n", arinFile))
+			sb.WriteString(fmt.Sprintf("    Last Delegated Diff: %d\n", arinDiff))
+		}
 	} else {
 		sb.WriteString("    Not Initialized\n")
 	}
@@ -249,6 +253,10 @@ func (b *Bot) sendStatus(ctx context.Context, sdkBot *bot.Bot, chatID int64) {
 	if ripeSerial > 0 {
 		sb.WriteString(fmt.Sprintf("    Serial: %d\n", ripeSerial))
 		sb.WriteString(fmt.Sprintf("    Last Check: %s\n", formatTimeAgo(ripeLastCheck)))
+		if ripeFile != "" {
+			sb.WriteString(fmt.Sprintf("    Delegated File: %s\n", ripeFile))
+			sb.WriteString(fmt.Sprintf("    Last Delegated Diff: %d\n", ripeDiff))
+		}
 	} else {
 		sb.WriteString("    Not Initialized\n")
 	}

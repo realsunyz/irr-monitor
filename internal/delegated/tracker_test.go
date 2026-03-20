@@ -1,18 +1,20 @@
-package arin
+package delegated
 
 import (
 	"strings"
 	"testing"
 )
 
-func TestParseDelegatedDataIncludesAssignedAndRanges(t *testing.T) {
+func TestParseDataIncludesAssignedAndRanges(t *testing.T) {
 	t.Parallel()
 
-	monitor := &Monitor{}
-	data := monitor.parseDelegatedData(strings.NewReader(`
+	tracker := NewTracker("", Config{
+		AllowedStatsSources: []string{"arin", "ripencc"},
+	})
+	data := tracker.parseData(strings.NewReader(`
 arin|*|asn|*|0|summary
 arin|US|asn|65000|2|20260320|allocated
-arin|CA|asn|65010|1|20260320|assigned
+ripencc|NL|asn|65010|1|20260320|assigned
 arin|US|asn|65020|1|20260320|available
 apnic|US|asn|65100|1|20260320|allocated
 `))
@@ -33,8 +35,8 @@ apnic|US|asn|65100|1|20260320|allocated
 func TestShouldNotifyASNSuppressesHistoricalEntries(t *testing.T) {
 	t.Parallel()
 
-	monitor := &Monitor{}
-	monitor.setDelegatedData(&DelegatedData{
+	tracker := NewTracker("", Config{})
+	tracker.setSnapshot(&Snapshot{
 		ASNs: map[string]struct{}{
 			"AS65000": {},
 			"AS65001": {},
@@ -44,27 +46,27 @@ func TestShouldNotifyASNSuppressesHistoricalEntries(t *testing.T) {
 		"AS65002": {},
 	})
 
-	if monitor.shouldNotifyASN("AS65000") {
+	if tracker.ShouldNotifyASN("AS65000") {
 		t.Fatalf("historical ASN should be suppressed")
 	}
-	if !monitor.shouldNotifyASN("AS65002") {
+	if !tracker.ShouldNotifyASN("AS65002") {
 		t.Fatalf("newly delegated ASN should still notify")
 	}
-	if !monitor.shouldNotifyASN("AS65100") {
+	if !tracker.ShouldNotifyASN("AS65100") {
 		t.Fatalf("unknown ASN should still notify")
 	}
 }
 
-func TestDiffDelegatedDataReturnsOnlyNewASNs(t *testing.T) {
+func TestDiffReturnsOnlyNewASNs(t *testing.T) {
 	t.Parallel()
 
-	previous := &DelegatedData{
+	previous := &Snapshot{
 		ASNs: map[string]struct{}{
 			"AS65000": {},
 			"AS65001": {},
 		},
 	}
-	current := &DelegatedData{
+	current := &Snapshot{
 		ASNs: map[string]struct{}{
 			"AS65000": {},
 			"AS65001": {},
@@ -72,11 +74,29 @@ func TestDiffDelegatedDataReturnsOnlyNewASNs(t *testing.T) {
 		},
 	}
 
-	diff := diffDelegatedData(previous, current)
+	diff := Diff(previous, current)
 	if len(diff) != 1 {
 		t.Fatalf("diff size = %d, want 1", len(diff))
 	}
 	if _, ok := diff["AS65002"]; !ok {
 		t.Fatalf("expected AS65002 in diff")
+	}
+}
+
+func TestStatusReturnsCurrentFileAndDiffCount(t *testing.T) {
+	t.Parallel()
+
+	tracker := NewTracker("", Config{})
+	tracker.setSnapshot(&Snapshot{FilePath: "delegated-20260320"}, map[string]struct{}{
+		"AS65000": {},
+		"AS65001": {},
+	})
+
+	filePath, diffCount := tracker.Status()
+	if filePath != "delegated-20260320" {
+		t.Fatalf("filePath = %q, want delegated-20260320", filePath)
+	}
+	if diffCount != 2 {
+		t.Fatalf("diffCount = %d, want 2", diffCount)
 	}
 }
