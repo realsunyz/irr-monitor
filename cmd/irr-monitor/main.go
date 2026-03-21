@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -31,12 +33,18 @@ type Config struct {
 	PreferencesFile string
 }
 
+type timestampLogWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
 func main() {
 	if handled := handleCLI(os.Args[1:], os.Stdout, os.Stderr); handled {
 		return
 	}
 
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	log.SetFlags(0)
+	log.SetOutput(&timestampLogWriter{w: os.Stderr})
 	log.Println("Starting IRR Monitor...")
 
 	config := loadConfig()
@@ -219,6 +227,24 @@ func loadConfig() *Config {
 	}
 
 	return config
+}
+
+func (w *timestampLogWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	for _, line := range bytes.SplitAfter(p, []byte("\n")) {
+		if len(line) == 0 {
+			continue
+		}
+
+		timestamp := time.Now().UTC().Format(time.RFC3339)
+		if _, err := fmt.Fprintf(w.w, "%s %s", timestamp, line); err != nil {
+			return 0, err
+		}
+	}
+
+	return len(p), nil
 }
 
 func getEnvOrDefault(key, defaultValue string) string {
