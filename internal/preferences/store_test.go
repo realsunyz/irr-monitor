@@ -37,7 +37,7 @@ func TestJSONStoreSetAndLoad(t *testing.T) {
 
 	want := UserPreferences{
 		Enabled:        true,
-		ASNSizes:       []string{"2b", "4b"},
+		ASNSizes:       nil,
 		RIRs:           []string{"APNIC", "ARIN"},
 		NIRs:           []string{"JPNIC"},
 		SponsoringOrgs: []string{"example sponsor"},
@@ -80,5 +80,22 @@ func TestJSONStoreLoadMissingOptionalFields(t *testing.T) {
 	want := UserPreferences{Enabled: true}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Get() = %#v, want %#v", got, want)
+	}
+}
+
+func TestNormalizeCollapsesFullSelectionToDefaults(t *testing.T) {
+	t.Parallel()
+
+	prefs := UserPreferences{
+		ASNSizes: []string{"2b", "4b"},
+		RIRs:     []string{"RIPE", "ARIN", "APNIC"},
+		NIRs:     []string{"TWNIC", "CNNIC", "IDNIC", "IRINN", "JPNIC", "KRNIC"},
+	}
+
+	prefs.Normalize()
+
+	want := UserPreferences{}
+	if !reflect.DeepEqual(prefs, want) {
+		t.Fatalf("Normalize() = %#v, want %#v", prefs, want)
 	}
 }

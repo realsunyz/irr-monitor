@@ -172,8 +172,6 @@ func (m *Monitor) poll() {
 		return
 	}
 
-	log.Printf("[ARIN Monitor] Received %d updates", len(updates))
-
 	var maxSerial int64
 	var wg sync.WaitGroup
 

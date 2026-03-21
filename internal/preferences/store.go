@@ -13,6 +13,12 @@ import (
 
 const currentVersion = 1
 
+var (
+	allASNSizes = []string{"2b", "4b"}
+	allRIRs     = []string{"APNIC", "ARIN", "RIPE"}
+	allNIRs     = []string{"CNNIC", "IDNIC", "IRINN", "JPNIC", "KRNIC", "TWNIC"}
+)
+
 type Store interface {
 	Load() error
 	Get(userID int64) (UserPreferences, bool)
@@ -203,7 +209,26 @@ func (p *UserPreferences) Normalize() {
 	p.ASNSizes = normalizeValues(p.ASNSizes, false)
 	p.RIRs = normalizeValues(p.RIRs, false)
 	p.NIRs = normalizeValues(p.NIRs, false)
-	p.SponsoringOrgs = normalizeValues(p.SponsoringOrgs, true)
+	p.SponsoringOrgs = NormalizeSponsoringOrgs(p.SponsoringOrgs)
+
+	if sameValues(p.ASNSizes, allASNSizes) {
+		p.ASNSizes = nil
+	}
+	if sameValues(p.RIRs, allRIRs) && sameValues(p.NIRs, allNIRs) {
+		p.RIRs = nil
+		p.NIRs = nil
+	}
+}
+
+func NormalizeSponsoringOrg(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func NormalizeSponsoringOrgs(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	return normalizeValues(values, true)
 }
 
 func normalizeValues(values []string, lowercase bool) []string {
@@ -235,4 +260,16 @@ func normalizeValues(values []string, lowercase bool) []string {
 
 	sort.Strings(normalized)
 	return normalized
+}
+
+func sameValues(values, target []string) bool {
+	if len(values) != len(target) {
+		return false
+	}
+	for i := range values {
+		if values[i] != target[i] {
+			return false
+		}
+	}
+	return true
 }

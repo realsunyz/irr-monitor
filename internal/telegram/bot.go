@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -122,8 +121,14 @@ func (b *Bot) handleMessage(ctx context.Context, sdkBot *bot.Bot, message *model
 	}
 
 	if b.isAwaitingSponsorInput(message.Chat.ID) {
+		sponsors, err := parseSponsorInput(text)
+		if err != nil {
+			b.sendPlainText(ctx, sdkBot, message.Chat.ID, "Invalid sponsoring-org format. Please try again.")
+			return
+		}
+
 		prefs, err := b.preferences.Update(message.Chat.ID, func(p *preferences.UserPreferences) error {
-			p.SponsoringOrgs = mergeSponsorValues(p.SponsoringOrgs, parseSponsorInput(text))
+			p.SponsoringOrgs = mergeSponsorValues(p.SponsoringOrgs, sponsors)
 			return nil
 		})
 		b.clearAwaitingSponsorInput(message.Chat.ID)
@@ -132,7 +137,7 @@ func (b *Bot) handleMessage(ctx context.Context, sdkBot *bot.Bot, message *model
 			b.sendPlainText(ctx, sdkBot, message.Chat.ID, "Failed to save sponsor filters. Please try again.")
 			return
 		}
-		b.sendMenuMessage(ctx, sdkBot, message.Chat.ID, menuSponsor, "Sponsor filters updated.\n\n", prefs)
+		b.sendMenuMessage(ctx, sdkBot, message.Chat.ID, menuSponsor, "", prefs)
 	}
 }
 
@@ -152,7 +157,6 @@ func (b *Bot) handleCallbackQuery(ctx context.Context, sdkBot *bot.Bot, query *m
 	switch query.Data {
 	case callbackCustomSponsor:
 		b.setAwaitingSponsorInput(query.From.ID, true)
-		callbackText = "Send sponsor filters in PM."
 		shouldUpdateMenu = false
 		b.sendPlainText(ctx, sdkBot, query.From.ID, sponsorInputPrompt())
 	default:
@@ -161,8 +165,7 @@ func (b *Bot) handleCallbackQuery(ctx context.Context, sdkBot *bot.Bot, query *m
 			return err
 		})
 		if err != nil {
-			log.Printf("Error handling callback %q for %d: %v", query.Data, query.From.ID, err)
-			callbackText = "Failed to update filters."
+			callbackText = err.Error()
 			b.answerCallbackQuery(ctx, sdkBot, query.ID, callbackText)
 			return
 		}
@@ -291,6 +294,7 @@ func (b *Bot) sendMenuMessage(ctx context.Context, sdkBot *bot.Bot, chatID int64
 	_, err := sdkBot.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:      chatID,
 		Text:        text,
+		ParseMode:   models.ParseModeHTML,
 		ReplyMarkup: markup,
 	})
 	if err != nil {
@@ -308,6 +312,7 @@ func (b *Bot) updateMenuFromCallback(ctx context.Context, sdkBot *bot.Bot, query
 		ChatID:      query.Message.Message.Chat.ID,
 		MessageID:   query.Message.Message.ID,
 		Text:        text,
+		ParseMode:   models.ParseModeHTML,
 		ReplyMarkup: markup,
 	})
 	if err != nil {
@@ -373,28 +378,7 @@ func mergeSponsorValues(existing, additions []string) []string {
 	if len(existing) == 0 && len(additions) == 0 {
 		return nil
 	}
-
-	merged := make([]string, 0, len(existing)+len(additions))
-	seen := make(map[string]struct{}, len(existing)+len(additions))
-
-	for _, value := range append(append([]string{}, existing...), additions...) {
-		value = normalizeSponsorValue(value)
-		if value == "" {
-			continue
-		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		merged = append(merged, value)
-	}
-
-	if len(merged) == 0 {
-		return nil
-	}
-
-	sort.Strings(merged)
-	return merged
+	return preferences.NormalizeSponsoringOrgs(append(append([]string{}, existing...), additions...))
 }
 
 func formatASNMessage(source string, autNum *AutNum) string {

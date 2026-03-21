@@ -37,14 +37,14 @@ func (e *NotificationEvent) MatchesPreferences(prefs preferences.UserPreferences
 	if !prefs.Enabled {
 		return false
 	}
+	if !hasAnyFilterSelected(prefs) {
+		return false
+	}
 
 	if !matchesValueSet(prefs.ASNSizes, e.ASNSize) {
 		return false
 	}
-	if !matchesValueSet(prefs.RIRs, e.RIR) {
-		return false
-	}
-	if !matchesValueSet(prefs.NIRs, e.NIR) {
+	if !matchesRIRAndNIRPreferences(prefs, e) {
 		return false
 	}
 	if !matchesSponsorTerms(prefs.SponsoringOrgs, e.SponsorTerms) {
@@ -74,28 +74,32 @@ func buildSponsorTerms(source string, autNum *AutNum) map[string]struct{} {
 	terms := make(map[string]struct{})
 
 	addSponsorTerm(terms, autNum.SponsoringOrg)
-	addSponsorTerm(terms, autNum.SponsoringOrgName)
-
-	if source == "APNIC" {
-		if nir := getNIRName(autNum); nir != "" {
-			addSponsorTerm(terms, nir)
-		}
-		addSponsorTerm(terms, autNum.MntBy)
+	if isLIRAutNum(source, autNum) {
+		addSponsorTerm(terms, "lir")
 	}
 
 	return terms
 }
 
 func addSponsorTerm(terms map[string]struct{}, value string) {
-	value = normalizeSponsorValue(value)
+	value = preferences.NormalizeSponsoringOrg(value)
 	if value == "" {
 		return
 	}
 	terms[value] = struct{}{}
 }
 
-func normalizeSponsorValue(value string) string {
-	return strings.ToLower(strings.TrimSpace(value))
+func isLIRAutNum(source string, autNum *AutNum) bool {
+	if source != "APNIC" && source != "RIPE" {
+		return false
+	}
+	if autNum.SponsoringOrg != "" {
+		return false
+	}
+	if source == "APNIC" && getNIRName(autNum) != "" {
+		return false
+	}
+	return preferences.NormalizeSponsoringOrg(autNum.OrgType) != "end-user"
 }
 
 func matchesValueSet(selected []string, value string) bool {
@@ -126,4 +130,29 @@ func matchesSponsorTerms(selected []string, terms map[string]struct{}) bool {
 		}
 	}
 	return false
+}
+
+func matchesRIRAndNIRPreferences(prefs preferences.UserPreferences, event *NotificationEvent) bool {
+	if event.RIR != "APNIC" {
+		if len(prefs.RIRs) == 0 {
+			return len(prefs.NIRs) == 0
+		}
+		return matchesValueSet(prefs.RIRs, event.RIR)
+	}
+
+	hasAPNIC := containsValue(prefs.RIRs, "APNIC")
+	selectedNIR := matchesValueSet(prefs.NIRs, event.NIR)
+
+	switch {
+	case len(prefs.RIRs) == 0 && len(prefs.NIRs) == 0:
+		return true
+	case hasAPNIC && len(prefs.NIRs) == 0:
+		return event.NIR == ""
+	case hasAPNIC && len(prefs.NIRs) > 0:
+		return event.NIR == "" || selectedNIR
+	case !hasAPNIC && len(prefs.NIRs) > 0:
+		return event.NIR != "" && selectedNIR
+	default:
+		return false
+	}
 }

@@ -178,8 +178,6 @@ func (m *Monitor) poll() {
 		return
 	}
 
-	log.Printf("[RIPE Monitor] Received %d updates", len(updates))
-
 	var maxSerial int64
 	var wg sync.WaitGroup
 
