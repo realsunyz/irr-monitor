@@ -83,7 +83,7 @@ func main() {
 	apnicMonitor := apnic.NewMonitor(dataDir, callback)
 	go apnicMonitor.Start(ctx)
 
-	arinMonitor := arin.NewMonitor(st, dataDir, config.PollInterval, callback)
+	arinMonitor := arin.NewMonitor(dataDir, callback)
 	go arinMonitor.Start(ctx)
 
 	ripeMonitor := ripe.NewMonitor(st, dataDir, config.PollInterval, callback)
@@ -111,7 +111,7 @@ func runNRTMTest(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("test-nrtm", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 
-	source := fs.String("source", "all", "registry to test: arin, ripe, all")
+	source := fs.String("source", "all", "registry to test: ripe, all")
 	timeout := fs.Duration("timeout", 10*time.Second, "timeout for each request")
 
 	if err := fs.Parse(args); err != nil {
@@ -149,17 +149,15 @@ func runNRTMTest(args []string, stdout, stderr io.Writer) int {
 }
 
 func registriesForSource(source string) ([]nrtm.Registry, error) {
-	all := []nrtm.Registry{arin.Registry, ripe.Registry}
+	all := []nrtm.Registry{ripe.Registry}
 
 	switch strings.ToLower(strings.TrimSpace(source)) {
 	case "", "all":
 		return all, nil
-	case "arin":
-		return all[:1], nil
 	case "ripe":
-		return all[1:], nil
+		return all, nil
 	default:
-		return nil, fmt.Errorf("unsupported source %q, expected one of: arin, ripe, all", source)
+		return nil, fmt.Errorf("unsupported source %q, expected one of: ripe, all", source)
 	}
 }
 

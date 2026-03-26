@@ -224,7 +224,7 @@ func (b *Bot) sendMatchingPMs(ctx context.Context, event *NotificationEvent) {
 }
 
 func (b *Bot) sendStatus(ctx context.Context, sdkBot *bot.Bot, chatID int64) {
-	ripeSerial, ripeLastCheck, _, ripeFile, ripeDiff, arinSerial, arinLastCheck, _, arinFile, arinDiff, apnicCount, apnicLastCheck, apnicFile, _ := Status.GetStatus()
+	ripeSerial, ripeLastCheck, _, ripeFile, ripeDiff, _, arinLastCheck, _, arinFile, arinDiff, apnicCount, apnicLastCheck, apnicFile, _ := Status.GetStatus()
 
 	var sb strings.Builder
 	sb.WriteString("IRR Monitor Status\n\n")
@@ -241,8 +241,7 @@ func (b *Bot) sendStatus(ctx context.Context, sdkBot *bot.Bot, chatID int64) {
 	}
 
 	sb.WriteString("\n- ARIN\n")
-	if arinSerial > 0 {
-		sb.WriteString(fmt.Sprintf("    Serial: %d\n", arinSerial))
+	if arinFile != "" || !arinLastCheck.IsZero() {
 		sb.WriteString(fmt.Sprintf("    Last Check: %s\n", formatTimeAgo(arinLastCheck)))
 		if arinFile != "" {
 			sb.WriteString(fmt.Sprintf("    Delegated File: %s\n", arinFile))

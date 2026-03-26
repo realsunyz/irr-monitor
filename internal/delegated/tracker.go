@@ -24,6 +24,7 @@ type Config struct {
 	URL                 string
 	FilePrefix          string
 	AllowedStatsSources []string
+	AllowedStatuses     []string
 }
 
 type Tracker struct {
@@ -31,6 +32,7 @@ type Tracker struct {
 	url                 string
 	filePrefix          string
 	allowedStatsSources map[string]struct{}
+	allowedStatuses     map[string]struct{}
 	mu                  sync.RWMutex
 	current             *Snapshot
 	newlyAdded          map[string]struct{}
@@ -43,11 +45,21 @@ func NewTracker(dataDir string, cfg Config) *Tracker {
 		allowed[source] = struct{}{}
 	}
 
+	statuses := cfg.AllowedStatuses
+	if len(statuses) == 0 {
+		statuses = []string{"allocated", "assigned"}
+	}
+	allowedStatuses := make(map[string]struct{}, len(statuses))
+	for _, status := range statuses {
+		allowedStatuses[status] = struct{}{}
+	}
+
 	return &Tracker{
 		dataDir:             dataDir,
 		url:                 cfg.URL,
 		filePrefix:          cfg.FilePrefix,
 		allowedStatsSources: allowed,
+		allowedStatuses:     allowedStatuses,
 		newlyAdded:          make(map[string]struct{}),
 	}
 }
@@ -113,6 +125,18 @@ func (t *Tracker) Status() (filePath string, diffCount int) {
 	}
 
 	return filePath, t.lastDiffCount
+}
+
+func (t *Tracker) NewlyAddedASNs() []string {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	asns := make([]string, 0, len(t.newlyAdded))
+	for asn := range t.newlyAdded {
+		asns = append(asns, asn)
+	}
+	sort.Strings(asns)
+	return asns
 }
 
 func Diff(previous, current *Snapshot) map[string]struct{} {
@@ -229,7 +253,7 @@ func (t *Tracker) parseData(r io.Reader) *Snapshot {
 		if parts[2] != "asn" {
 			continue
 		}
-		if parts[6] != "allocated" && parts[6] != "assigned" {
+		if _, ok := t.allowedStatuses[parts[6]]; !ok {
 			continue
 		}
 

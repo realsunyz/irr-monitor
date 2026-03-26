@@ -62,6 +62,7 @@ func NewMonitor(st *state.State, dataDir string, pollInterval time.Duration, cal
 			URL:                 DelegatedURL,
 			FilePrefix:          delegatedFilenamePrefix,
 			AllowedStatsSources: []string{"ripencc", "ripe"},
+			AllowedStatuses:     []string{"allocated", "assigned"},
 		}),
 	}
 }

@@ -5,27 +5,29 @@ import (
 	"testing"
 )
 
-func TestParseDataIncludesAssignedAndRanges(t *testing.T) {
+func TestParseDataRespectsAllowedStatusesAndRanges(t *testing.T) {
 	t.Parallel()
 
 	tracker := NewTracker("", Config{
 		AllowedStatsSources: []string{"arin", "ripencc"},
+		AllowedStatuses:     []string{"assigned"},
 	})
 	data := tracker.parseData(strings.NewReader(`
 arin|*|asn|*|0|summary
 arin|US|asn|65000|2|20260320|allocated
 ripencc|NL|asn|65010|1|20260320|assigned
 arin|US|asn|65020|1|20260320|available
+arin||asn|65021|1||reserved|
 apnic|US|asn|65100|1|20260320|allocated
 `))
 
-	for _, asn := range []string{"AS65000", "AS65001", "AS65010"} {
+	for _, asn := range []string{"AS65010"} {
 		if _, ok := data.ASNs[asn]; !ok {
 			t.Fatalf("expected %s in delegated data", asn)
 		}
 	}
 
-	for _, asn := range []string{"AS65020", "AS65100"} {
+	for _, asn := range []string{"AS65000", "AS65001", "AS65020", "AS65021", "AS65100"} {
 		if _, ok := data.ASNs[asn]; ok {
 			t.Fatalf("did not expect %s in delegated data", asn)
 		}
