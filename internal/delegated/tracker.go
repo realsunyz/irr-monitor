@@ -17,7 +17,13 @@ import (
 
 type Snapshot struct {
 	ASNs     map[string]struct{}
+	Metadata map[string]ASNMetadata
 	FilePath string
+}
+
+type ASNMetadata struct {
+	Country string
+	Date    string
 }
 
 type Config struct {
@@ -234,7 +240,10 @@ func (t *Tracker) loadFile(filePath string) (*Snapshot, error) {
 }
 
 func (t *Tracker) parseData(r io.Reader) *Snapshot {
-	data := &Snapshot{ASNs: make(map[string]struct{})}
+	data := &Snapshot{
+		ASNs:     make(map[string]struct{}),
+		Metadata: make(map[string]ASNMetadata),
+	}
 
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
@@ -267,7 +276,12 @@ func (t *Tracker) parseData(r io.Reader) *Snapshot {
 		}
 
 		for i := int64(0); i < count; i++ {
-			data.ASNs[fmt.Sprintf("AS%d", start+i)] = struct{}{}
+			asn := fmt.Sprintf("AS%d", start+i)
+			data.ASNs[asn] = struct{}{}
+			data.Metadata[asn] = ASNMetadata{
+				Country: parts[1],
+				Date:    parts[5],
+			}
 		}
 	}
 

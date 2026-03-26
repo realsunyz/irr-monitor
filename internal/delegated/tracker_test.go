@@ -26,6 +26,9 @@ apnic|US|asn|65100|1|20260320|allocated
 			t.Fatalf("expected %s in delegated data", asn)
 		}
 	}
+	if got := data.Metadata["AS65010"].Date; got != "20260320" {
+		t.Fatalf("AS65010 date = %q, want 20260320", got)
+	}
 
 	for _, asn := range []string{"AS65000", "AS65001", "AS65020", "AS65021", "AS65100"} {
 		if _, ok := data.ASNs[asn]; ok {

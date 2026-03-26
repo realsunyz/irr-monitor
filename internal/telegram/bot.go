@@ -391,7 +391,7 @@ func formatASNMessage(source string, autNum *AutNum) string {
 		sb.WriteString(fmt.Sprintf("<b>descr:</b> %s\n", escapeHTML(autNum.Descr)))
 	}
 
-	if autNum.Country != "" {
+	if autNum.Country != "" && (source != "ARIN" || (autNum.Org == "" && autNum.OrgName == "")) {
 		sb.WriteString(fmt.Sprintf("<b>country:</b> %s\n", autNum.Country))
 	}
 
@@ -405,6 +405,9 @@ func formatASNMessage(source string, autNum *AutNum) string {
 		}
 		if autNum.OrgType != "" {
 			sb.WriteString(fmt.Sprintf("<b>org-type:</b> %s\n", autNum.OrgType))
+		}
+		if source == "ARIN" && autNum.Country != "" {
+			sb.WriteString(fmt.Sprintf("<b>country:</b> %s\n", autNum.Country))
 		}
 		if autNum.OrgCountry != "" {
 			sb.WriteString(fmt.Sprintf("<b>country:</b> %s\n", autNum.OrgCountry))
